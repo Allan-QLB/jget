@@ -1,8 +1,4 @@
 package com.github.qlb;
-
-import cn.hutool.core.io.file.FileSystemUtil;
-import sun.nio.ch.IOUtil;
-
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -23,11 +19,19 @@ public class DownloadSubTask {
     public DownloadSubTask(DownloadTask parent, Range range) throws IOException {
         this.parent = parent;
         this.range = range;
-        this.targetFileChannel = Files.newByteChannel(new File(name).toPath(), StandardOpenOption.WRITE, StandardOpenOption.CREATE);
         this.finished = false;
         this.client = new Client(this);
+        this.targetFileChannel = createTempFile();
     }
 
+    private ByteChannel createTempFile() throws IOException {
+        File dir = new File(parent.fileDirectory());
+        if (!dir.exists()) {
+            Files.createDirectory(dir.toPath());
+        }
+        return Files.newByteChannel(new File(parent.fileDirectory(), name).toPath(),
+                StandardOpenOption.WRITE, StandardOpenOption.CREATE);
+    }
     public void start() {
         this.client.start();
     }

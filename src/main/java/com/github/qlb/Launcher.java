@@ -10,6 +10,7 @@ public class Launcher {
                 .argName("url")
                 .hasArg()
                 .desc("url")
+                .required()
                 .build();
         options.addOption(option);
         final DefaultParser parser = new DefaultParser();

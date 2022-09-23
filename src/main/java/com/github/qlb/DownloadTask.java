@@ -1,10 +1,20 @@
 package com.github.qlb;
 
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.ByteBuffer;
 import java.nio.channels.SeekableByteChannel;
+import java.nio.file.Files;
+import java.nio.file.OpenOption;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
 
 public class DownloadTask {
+    private static final int TEMP_FILE_READ_BATCH_SIZE = 8192;
+    private static final String DEFAULT_DIR = System.getenv("HOME")
+            + File.separator + "jget" + File.separator + "download";
     private State state;
     private final Http http;
     private final List<DownloadSubTask> subTasks = new ArrayList<>();
@@ -15,7 +25,10 @@ public class DownloadTask {
     }
 
     enum State {
-        created, init, started, finished
+        created,
+        init,
+        started,
+        finished
     }
 
     public void subTaskFinished() {
@@ -24,8 +37,28 @@ public class DownloadTask {
                 return;
             }
         }
-        System.out.println("task " + this + " finish");
+        mergeTempFiles();
         state = State.finished;
+    }
+
+    private void mergeTempFiles() {
+        try (SeekableByteChannel target = Files.newByteChannel(new File(fileDirectory(), http.getFileName()).toPath(),
+                StandardOpenOption.WRITE, StandardOpenOption.CREATE)){
+            for (DownloadSubTask subTask : subTasks) {
+                File tempFile = new File(fileDirectory(), subTask.getName());
+                byte[] buffer = new byte[TEMP_FILE_READ_BATCH_SIZE];
+                try (InputStream input = Files.newInputStream(tempFile.toPath(), StandardOpenOption.READ)) {
+                    int readBytes;
+                    while ((readBytes = input.read(buffer)) > 0) {
+                        target.write(ByteBuffer.wrap(buffer, 0, readBytes));
+                    }
+
+                }
+                Files.delete(tempFile.toPath());
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     public void initiated() {
@@ -52,6 +85,10 @@ public class DownloadTask {
         for (DownloadSubTask subTask : subTasks) {
             subTask.start();
         }
+    }
+
+    public String fileDirectory() {
+        return DEFAULT_DIR;
     }
 
 }

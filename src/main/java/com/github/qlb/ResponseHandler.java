@@ -6,12 +6,11 @@ import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.*;
 
 
-
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
 
 public class ResponseHandler extends SimpleChannelInboundHandler<HttpObject> {
-
     private final DownloadTask task;
     private final DownloadSubTask subTask;
 
@@ -20,47 +19,55 @@ public class ResponseHandler extends SimpleChannelInboundHandler<HttpObject> {
         this.subTask = subTask;
     }
 
-
-
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, HttpObject msg) throws Exception {
             if (msg instanceof HttpContent) {
-                if (subTask != null) {
-                    subTask.accept(((HttpContent) msg).content().nioBuffer());
-                }
+                handleContent((HttpContent) msg);
             } else if (msg instanceof HttpResponse) {
-                HttpResponse response = (HttpResponse) msg;
-                final HttpHeaders headers = response.headers();
-                if (response.status().code() == 200) {
-                    System.out.println("response: " + response);
-                    long contentLength = headers.getInt(HttpHeaderNames.CONTENT_LENGTH);
-                    if (subTask == null && headers.contains(HttpHeaderNames.ACCEPT_RANGES)) {
-                        ctx.close();
-                        int np = 4;
-                        long size = contentLength / np;
-                        for (int i = 0; i < np; i++) {
-                            if (i != np - 1) {
-                                task.addSubTask(new DownloadSubTask(task, new Range(i * size, (i + 1) * size - 1)));
-                            } else {
-                                task.addSubTask(new DownloadSubTask(task, new Range(i * size, contentLength - 1)));
-                            }
-                        }
-                    } else if (subTask == null && !headers.contains(HttpHeaderNames.ACCEPT_RANGES)) {
-                        ctx.close();
-                        task.addSubTask(new DownloadSubTask(task, new Range(0, contentLength)));
-                    }
-                    task.start();
-                }
-                else if (response.status().code() == 206){
-                    System.out.println("receive partial");
-                } else {
-                    System.out.println("failed " + response);
-                    ctx.close();
-
-                }
+                handleResponse(ctx, (HttpResponse) msg);
             } else {
                 System.out.println(msg);
             }
+    }
+
+    private void handleResponse(ChannelHandlerContext ctx, HttpResponse response) throws IOException {
+        final HttpHeaders headers = response.headers();
+        if (response.status() == HttpResponseStatus.OK) {
+            if (subTask == null) {
+                long contentLength = headers.getInt(HttpHeaderNames.CONTENT_LENGTH);
+                if (headers.contains(HttpHeaderNames.ACCEPT_RANGES)) {
+                    allocateSubTasks(contentLength, Runtime.getRuntime().availableProcessors());
+                } else {
+                    allocateSubTasks(contentLength, 1);
+                }
+                ctx.close();
+                task.start();
+            }
+        } else if (response.status() == HttpResponseStatus.PARTIAL_CONTENT){
+            System.out.println("receive partial");
+        } else {
+            System.out.println("failed " + response);
+            ctx.close();
+        }
+    }
+
+    private void handleContent(HttpContent content) throws IOException {
+        if (subTask != null) {
+            subTask.accept(content.content().nioBuffer());
+        }
+    }
+
+
+
+    private void allocateSubTasks(long totalLen, int numSubTasks) throws IOException {
+        long size = totalLen / numSubTasks;
+        for (int i = 0; i < numSubTasks; i++) {
+            if (i != numSubTasks - 1) {
+                task.addSubTask(new DownloadSubTask(task, new Range(i * size, (i + 1) * size - 1)));
+            } else {
+                task.addSubTask(new DownloadSubTask(task, new Range(i * size, totalLen - 1)));
+            }
+        }
     }
 
     private void sendRequest(ChannelHandlerContext ctx) {
@@ -70,7 +77,7 @@ public class ResponseHandler extends SimpleChannelInboundHandler<HttpObject> {
             request.setMethod(HttpMethod.GET);
             request.headers().set(HttpHeaderNames.RANGE, String.format("bytes=%s-%s", subTask.getRange().getStart(), subTask.getRange().getEnd()));
         }
-        System.out.println(request);
+//        System.out.println(request);
         ctx.writeAndFlush(request);
     }
 

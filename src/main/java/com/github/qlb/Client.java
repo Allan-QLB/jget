@@ -15,8 +15,6 @@ public class Client {
     private final EventLoopGroup group = new NioEventLoopGroup(1);
     private String fileName;
 
-
-
     public Client(DownloadTask task) {
         this.task = task;
     }
@@ -25,7 +23,6 @@ public class Client {
         this.task = subTask.getParent();
         this.subTask = subTask;
     }
-
 
     public void start() {
         Bootstrap bootstrap = new Bootstrap();
