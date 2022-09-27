@@ -7,7 +7,6 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.http.HttpClientCodec;
 import io.netty.handler.ssl.SslContextBuilder;
-import io.netty.handler.ssl.SslContextOption;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 
 public class Client {
@@ -37,31 +36,22 @@ public class Client {
                     pipeline.addLast(SslContextBuilder
                             .forClient()
                             .trustManager(InsecureTrustManagerFactory.INSTANCE)
-                                    .protocols("TLSv1.1")
                             .build().newHandler(channel.alloc()));
                 }
                 pipeline.addLast(new HttpClientCodec())
                         .addLast(new ResponseHandler(task, subTask));
 
             }
-        }).connect(http.getHost(), http.getPort()).addListener(new ChannelFutureListener() {
-            @Override
-            public void operationComplete(ChannelFuture f) throws Exception {
-                if (f.isSuccess()) {
-                    System.out.println("connect success");
-                    connection = f.channel();
-                } else {
-                    System.out.println("connection failed");
-                    f.cause().printStackTrace();
-                }
+        }).connect(http.getHost(), http.getPort()).addListener((ChannelFutureListener) f -> {
+            if (f.isSuccess()) {
+                System.out.println("connect success");
+                connection = f.channel();
+            } else {
+                System.out.println("connection failed");
+                f.cause().printStackTrace();
             }
         });
-        connect.channel().closeFuture().addListener(new ChannelFutureListener() {
-            @Override
-            public void operationComplete(ChannelFuture channelFuture) throws Exception {
-                group.shutdownGracefully();
-            }
-        });
+        connect.channel().closeFuture().addListener((ChannelFutureListener) channelFuture -> group.shutdownGracefully());
     }
 
     public void shutdown() {

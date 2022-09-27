@@ -4,10 +4,9 @@ package com.github.qlb;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.*;
-
+import io.netty.util.internal.StringUtil;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 
 
 public class ResponseHandler extends SimpleChannelInboundHandler<HttpObject> {
@@ -34,7 +33,7 @@ public class ResponseHandler extends SimpleChannelInboundHandler<HttpObject> {
         final HttpHeaders headers = response.headers();
         if (response.status() == HttpResponseStatus.OK) {
             if (subTask == null) {
-                long contentLength = headers.getInt(HttpHeaderNames.CONTENT_LENGTH);
+                long contentLength = headers.getInt(HttpHeaderNames.CONTENT_LENGTH, -1);
                 if (headers.contains(HttpHeaderNames.ACCEPT_RANGES)) {
                     allocateSubTasks(contentLength, Runtime.getRuntime().availableProcessors());
                 } else {
@@ -42,9 +41,18 @@ public class ResponseHandler extends SimpleChannelInboundHandler<HttpObject> {
                 }
                 ctx.close();
                 task.start();
+            } else {
+                task.getHttp().setResponseHeaders(headers);
             }
-        } else if (response.status() == HttpResponseStatus.PARTIAL_CONTENT){
+        } else if (response.status() == HttpResponseStatus.PARTIAL_CONTENT) {
             System.out.println("receive partial");
+        } else if (response.status() == HttpResponseStatus.FOUND) {
+            String location = response.headers().get(HttpHeaderNames.LOCATION);
+            ctx.close();
+            if (StringUtil.isNullOrEmpty(location)) {
+                throw new IllegalStateException("Location is absent in response headers");
+            }
+            new Client(new DownloadTask(location, task.fileDirectory())).start();
         } else {
             System.out.println("failed " + response);
             ctx.close();
@@ -53,7 +61,7 @@ public class ResponseHandler extends SimpleChannelInboundHandler<HttpObject> {
 
     private void handleContent(HttpContent content) throws IOException {
         if (subTask != null) {
-            subTask.accept(content.content().nioBuffer());
+            subTask.accept(content);
         }
     }
 

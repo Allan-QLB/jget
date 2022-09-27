@@ -1,5 +1,7 @@
 package com.github.qlb;
 
+import io.netty.handler.codec.http.HttpHeaderNames;
+import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.util.internal.StringUtil;
 
 import java.io.UnsupportedEncodingException;
@@ -7,7 +9,7 @@ import java.net.URLDecoder;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
-//import java.util.Optional;
+import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -15,11 +17,14 @@ public class Http {
     private static final String SCHEMA_INSECURE = "http://";
     private static final String SCHEMA_SECURE = "https://";
     private static final String FILE_NAME_KEY_IN_QUERY = "filename";
+    private static final String FILE_NAME_PATTERN_IN_HEADER = ".*filename=(?<fname>.+)$";
     private static final int DEFAULT_PORT_SECURE = 443;
     private static final int DEFAULT_PORT_INSECURE = 80;
     private final String url;
+    private String decodedStripedUrl;
     private final Map<String, String> query = new HashMap<>();
-    private String fileName;
+    private HttpHeaders responseHeaders;
+    //private String fileName;
     private String host;
     private int port;
     private boolean secure;
@@ -55,15 +60,14 @@ public class Http {
         if (StringUtil.isNullOrEmpty(url)) {
             throw new IllegalArgumentException("Url can not be empty");
         }
-        final String decodedStripedUrl = decodeAndParseQuery(url);
+        decodedStripedUrl = decodeAndParseQuery(url);
         if (decodedStripedUrl.startsWith(SCHEMA_SECURE)) {
             parseHostAndPort(decodedStripedUrl, SCHEMA_SECURE);
         } else if (decodedStripedUrl.startsWith(SCHEMA_INSECURE)) {
             parseHostAndPort(decodedStripedUrl, SCHEMA_INSECURE);
         } else {
             throw new IllegalArgumentException("Http schema can not be found");
-        }
-        this.fileName = findFileName(decodedStripedUrl, query);
+        };
     }
 
     private void parseHostAndPort(String url, String schema) {
@@ -71,13 +75,8 @@ public class Http {
         final Matcher matcher = pattern.matcher(url);
         if (matcher.find()) {
             host = Objects.requireNonNull(matcher.group("host"), "host cannot be null");
-            if (matcher.group("port") != null) {
-                port = Integer.parseInt(matcher.group("port"));
-            } else {
-                port = defaultPort(schema);
-            }
-//            port = Optional.ofNullable(matcher.group("port")).map(Integer::parseInt)
-//                    .orElse(defaultPort(schema));
+            port = Optional.ofNullable(matcher.group("port")).map(Integer::parseInt)
+                    .orElse(defaultPort(schema));
             if (SCHEMA_SECURE.equals(schema)) {
                 secure = true;
             }
@@ -113,17 +112,34 @@ public class Http {
     }
 
     public String getFileName() {
-        return fileName;
+        return findFileName(decodedStripedUrl, query);
+    }
+
+    public void setResponseHeaders(HttpHeaders responseHeaders) {
+        this.responseHeaders = responseHeaders;
     }
 
     public String findFileName(String url, Map<String, String> query) {
         final int lastSeparatorIdx = url.lastIndexOf("/");
+        String name = null;
         if (query.containsKey(FILE_NAME_KEY_IN_QUERY)) {
-            return query.get(FILE_NAME_KEY_IN_QUERY);
-        } else if (lastSeparatorIdx != -1) {
-            return url.substring(lastSeparatorIdx + 1);
+            name =  query.get(FILE_NAME_KEY_IN_QUERY);
+        }
+        if (name == null && responseHeaders != null &&
+                 responseHeaders.contains(HttpHeaderNames.CONTENT_DISPOSITION)) {
+            final Pattern pattern = Pattern.compile(FILE_NAME_PATTERN_IN_HEADER);
+            final Matcher matcher = pattern.matcher(responseHeaders.get(HttpHeaderNames.CONTENT_DISPOSITION));
+            if (matcher.find()) {
+                name = matcher.group("fname");
+            }
+        }
+        if (name == null && lastSeparatorIdx != -1) {
+            name = url.substring(lastSeparatorIdx + 1);
+        }
+        if (name == null) {
+            throw new IllegalStateException("Can not find filename for " + this);
         } else {
-            throw new IllegalStateException("Can not find filename in url" + url);
+            return name;
         }
     }
 }

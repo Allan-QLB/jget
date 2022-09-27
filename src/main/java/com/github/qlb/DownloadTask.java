@@ -1,6 +1,6 @@
 package com.github.qlb;
 
-import io.netty.util.concurrent.Future;
+import io.netty.handler.codec.http.HttpHeaders;
 import org.apache.commons.cli.CommandLine;
 
 import java.io.File;
@@ -9,10 +9,10 @@ import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.channels.SeekableByteChannel;
 import java.nio.file.Files;
-import java.nio.file.OpenOption;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -21,7 +21,8 @@ import java.util.concurrent.TimeUnit;
 public class DownloadTask {
     public static final ScheduledExecutorService PROGRESS_EXECUTOR = Executors.newSingleThreadScheduledExecutor();
     private static final int TEMP_FILE_READ_BATCH_SIZE = 8192;
-    private static final String DEFAULT_DIR = System.getenv("HOME");
+    private static final String DEFAULT_DIR = Optional.ofNullable(System.getenv("HOME"))
+            .orElse(System.getenv("HOMEPATH"));
     private State state;
     private final Http http;
     private final String targetDirectory;
@@ -31,9 +32,14 @@ public class DownloadTask {
     private ScheduledFuture<?> progress;
 
     public DownloadTask(CommandLine cli) {
-        this.http = new Http(cli.getOptionValue(DownloadOptions.URL));
-        this.targetDirectory = cli.getOptionValue(DownloadOptions.HOME_DIR, DEFAULT_DIR)
-                + File.separator + "jget" + File.separator + "download";
+        this(cli.getOptionValue(DownloadOptions.URL),
+                cli.getOptionValue(DownloadOptions.HOME_DIR, DEFAULT_DIR) + File.separator + "jget" + File.separator + "download");
+
+    }
+
+    public DownloadTask(String url, String targetDirectory) {
+        this.http = new Http(url);
+        this.targetDirectory = targetDirectory;
         this.state = State.created;
     }
 
@@ -44,9 +50,9 @@ public class DownloadTask {
         finished
     }
 
-    enum Unit{
+    enum Unit {
         B(1), KB(1 << 10), MB(1 << 20), GB(1 << 30);
-        private int factor;
+        private final int factor;
         private Unit(final int factor) {
             this.factor = factor;
         }
@@ -113,12 +119,7 @@ public class DownloadTask {
         }
         state = State.started;
         System.out.println("Download Task " + this + "start");
-        progress = PROGRESS_EXECUTOR.scheduleAtFixedRate(new Runnable() {
-            @Override
-            public void run() {
-                DownloadTask.this.printProgress();
-            }
-        }, 1, 1, TimeUnit.SECONDS);
+        progress = PROGRESS_EXECUTOR.scheduleAtFixedRate(this::printProgress, 1, 1, TimeUnit.SECONDS);
     }
 
     public String fileDirectory() {

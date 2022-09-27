@@ -1,4 +1,7 @@
 package com.github.qlb;
+import io.netty.handler.codec.http.HttpContent;
+import io.netty.handler.codec.http.LastHttpContent;
+
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -63,15 +66,16 @@ public class DownloadSubTask {
         return parent;
     }
 
-    public void accept(ByteBuffer content) throws IOException {
-        int remaining = content.remaining();
+    public void accept(HttpContent httpContent) throws IOException {
+        final ByteBuffer contentBuffer = httpContent.content().nioBuffer();
+        int remaining = contentBuffer.remaining();
         int written = 0;
         do {
-            written += targetFileChannel.write(content);
+            written += targetFileChannel.write(contentBuffer);
         } while (written < remaining);
         readBytes += remaining;
         parent.reportRead(remaining);
-        if (readBytes == range.size()) {
+        if (readBytes == range.size() || httpContent instanceof LastHttpContent) {
             System.out.println("subtask finished");
             finished();
         }
