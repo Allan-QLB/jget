@@ -27,7 +27,7 @@ public class DownloadSubTask {
     private ByteChannel createTempFile() throws IOException {
         File dir = new File(parent.fileDirectory());
         if (!dir.exists()) {
-            Files.createDirectory(dir.toPath());
+            Files.createDirectories(dir.toPath());
         }
         return Files.newByteChannel(new File(parent.fileDirectory(), name).toPath(),
                 StandardOpenOption.WRITE, StandardOpenOption.CREATE);
@@ -39,6 +39,7 @@ public class DownloadSubTask {
     public void finished() {
         try {
             targetFileChannel.close();
+            client.shutdown();
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -63,8 +64,14 @@ public class DownloadSubTask {
     }
 
     public void accept(ByteBuffer content) throws IOException {
-        readBytes += targetFileChannel.write(content);
-        if (readBytes == (range.getEnd() -  range.getStart() + 1)) {
+        int remaining = content.remaining();
+        int written = 0;
+        do {
+            written += targetFileChannel.write(content);
+        } while (written < remaining);
+        readBytes += remaining;
+        parent.reportRead(remaining);
+        if (readBytes == range.size()) {
             System.out.println("subtask finished");
             finished();
         }

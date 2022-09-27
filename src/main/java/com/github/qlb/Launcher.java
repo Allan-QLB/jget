@@ -4,19 +4,9 @@ import org.apache.commons.cli.*;
 
 public class Launcher {
     public static void main(String[] args) throws ParseException {
-        final Options options = new Options();
-        final Option option = Option.builder()
-                .option("u")
-                .argName("url")
-                .hasArg()
-                .desc("url")
-                .required()
-                .build();
-        options.addOption(option);
         final DefaultParser parser = new DefaultParser();
-        final CommandLine cli = parser.parse(options, args);
-        final String url = cli.getOptionValue("u");
-        final Client client = new Client(new DownloadTask(url));
+        final CommandLine cli = parser.parse(DownloadOptions.getDefaultOptions(), args);
+        final Client client = new Client(new DownloadTask(cli));
         client.start();
     }
 }

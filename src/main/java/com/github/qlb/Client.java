@@ -7,13 +7,15 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.http.HttpClientCodec;
 import io.netty.handler.ssl.SslContextBuilder;
+import io.netty.handler.ssl.SslContextOption;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 
 public class Client {
     private final DownloadTask task;
     private DownloadSubTask subTask;
     private final EventLoopGroup group = new NioEventLoopGroup(1);
-    private String fileName;
+    private Channel connection;
+
 
     public Client(DownloadTask task) {
         this.task = task;
@@ -35,22 +37,38 @@ public class Client {
                     pipeline.addLast(SslContextBuilder
                             .forClient()
                             .trustManager(InsecureTrustManagerFactory.INSTANCE)
+                                    .protocols("TLSv1.1")
                             .build().newHandler(channel.alloc()));
                 }
                 pipeline.addLast(new HttpClientCodec())
                         .addLast(new ResponseHandler(task, subTask));
 
             }
-        }).connect(http.getHost(), http.getPort()).addListener(f -> {
-            if (f.isSuccess()) {
-                System.out.println("connect success");
-            } else {
-                System.out.println("connection failed");
-                f.cause().printStackTrace();
+        }).connect(http.getHost(), http.getPort()).addListener(new ChannelFutureListener() {
+            @Override
+            public void operationComplete(ChannelFuture f) throws Exception {
+                if (f.isSuccess()) {
+                    System.out.println("connect success");
+                    connection = f.channel();
+                } else {
+                    System.out.println("connection failed");
+                    f.cause().printStackTrace();
+                }
             }
         });
+        connect.channel().closeFuture().addListener(new ChannelFutureListener() {
+            @Override
+            public void operationComplete(ChannelFuture channelFuture) throws Exception {
+                group.shutdownGracefully();
+            }
+        });
+    }
 
-        connect.channel().closeFuture().addListener(future -> group.shutdownGracefully());
+    public void shutdown() {
+        if (connection != null && connection.isOpen()) {
+            connection.close();
+            System.out.println("Connection " + connection + " closed");
+        }
     }
 
 }

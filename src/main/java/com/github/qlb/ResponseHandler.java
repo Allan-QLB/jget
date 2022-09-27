@@ -57,8 +57,6 @@ public class ResponseHandler extends SimpleChannelInboundHandler<HttpObject> {
         }
     }
 
-
-
     private void allocateSubTasks(long totalLen, int numSubTasks) throws IOException {
         long size = totalLen / numSubTasks;
         for (int i = 0; i < numSubTasks; i++) {

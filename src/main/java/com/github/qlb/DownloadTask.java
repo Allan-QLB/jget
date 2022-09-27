@@ -1,5 +1,8 @@
 package com.github.qlb;
 
+import io.netty.util.concurrent.Future;
+import org.apache.commons.cli.CommandLine;
+
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -10,17 +13,27 @@ import java.nio.file.OpenOption;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 
 public class DownloadTask {
+    public static final ScheduledExecutorService PROGRESS_EXECUTOR = Executors.newSingleThreadScheduledExecutor();
     private static final int TEMP_FILE_READ_BATCH_SIZE = 8192;
-    private static final String DEFAULT_DIR = System.getenv("HOME")
-            + File.separator + "jget" + File.separator + "download";
+    private static final String DEFAULT_DIR = System.getenv("HOME");
     private State state;
     private final Http http;
+    private final String targetDirectory;
     private final List<DownloadSubTask> subTasks = new ArrayList<>();
+    private long totalSize;
+    private volatile long totalRead;
+    private ScheduledFuture<?> progress;
 
-    public DownloadTask(String url) {
-        this.http = new Http(url);
+    public DownloadTask(CommandLine cli) {
+        this.http = new Http(cli.getOptionValue(DownloadOptions.URL));
+        this.targetDirectory = cli.getOptionValue(DownloadOptions.HOME_DIR, DEFAULT_DIR)
+                + File.separator + "jget" + File.separator + "download";
         this.state = State.created;
     }
 
@@ -29,6 +42,14 @@ public class DownloadTask {
         init,
         started,
         finished
+    }
+
+    enum Unit{
+        B(1), KB(1 << 10), MB(1 << 20), GB(1 << 30);
+        private int factor;
+        private Unit(final int factor) {
+            this.factor = factor;
+        }
     }
 
     public void subTaskFinished() {
@@ -56,6 +77,7 @@ public class DownloadTask {
                 }
                 Files.delete(tempFile.toPath());
             }
+            System.out.println("merge temp files finish");
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -66,7 +88,12 @@ public class DownloadTask {
     }
 
     void addSubTask(DownloadSubTask subTask) {
-        subTasks.add(subTask);
+        if (state == State.created) {
+            subTasks.add(subTask);
+            totalSize += subTask.getRange().size();
+        } else {
+            throw new IllegalStateException("Can not add subtask on state " + state);
+        }
     }
 
     public boolean isFinished() {
@@ -81,14 +108,42 @@ public class DownloadTask {
         if (state == State.started || state == State.finished) {
             return;
         }
-        state = State.started;
         for (DownloadSubTask subTask : subTasks) {
             subTask.start();
         }
+        state = State.started;
+        System.out.println("Download Task " + this + "start");
+        progress = PROGRESS_EXECUTOR.scheduleAtFixedRate(new Runnable() {
+            @Override
+            public void run() {
+                DownloadTask.this.printProgress();
+            }
+        }, 1, 1, TimeUnit.SECONDS);
     }
 
     public String fileDirectory() {
-        return DEFAULT_DIR;
+        return targetDirectory != null ? targetDirectory : DEFAULT_DIR;
+    }
+
+    public synchronized void reportRead(long readBytes) {
+        totalRead += readBytes;
+    }
+
+    private void printProgress() {
+        Unit[] values = Unit.values();
+        double readUnited = 0D;
+        Unit unit = Unit.B;
+        for (int i = values.length - 1; i >= 0; i--) {
+            readUnited = totalRead * 1.0 / values[i].factor;
+            if (readUnited >= 0.5) {
+                unit = values[i];
+                break;
+            }
+        }
+        System.out.printf("\r%.2f, transferred: %.2f%s%n", totalRead * 1.0 / totalSize, readUnited, unit);
+        if (isFinished()) {
+            progress.cancel(false);
+        }
     }
 
 }

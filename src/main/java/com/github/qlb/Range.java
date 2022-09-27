@@ -9,6 +9,10 @@ public class Range {
         this.end = end;
     }
 
+    public long size() {
+        return end - start + 1;
+    }
+
     public long getStart() {
         return start;
     }

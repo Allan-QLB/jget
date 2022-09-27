@@ -7,7 +7,7 @@ import java.net.URLDecoder;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
+//import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -45,7 +45,7 @@ public class Http {
             for (String kv : kvs) {
                 final String[] kvArr = kv.split("=");
                 if (kvArr.length == 2) {
-                    query.put(kvArr[0], kvArr[1]);
+                    query.put(kvArr[0].toLowerCase(), kvArr[1]);
                 }
             }
             return url.substring(0, queryPoint);
@@ -71,8 +71,13 @@ public class Http {
         final Matcher matcher = pattern.matcher(url);
         if (matcher.find()) {
             host = Objects.requireNonNull(matcher.group("host"), "host cannot be null");
-            port = Optional.ofNullable(matcher.group("port")).map(Integer::parseInt)
-                    .orElse(defaultPort(schema));
+            if (matcher.group("port") != null) {
+                port = Integer.parseInt(matcher.group("port"));
+            } else {
+                port = defaultPort(schema);
+            }
+//            port = Optional.ofNullable(matcher.group("port")).map(Integer::parseInt)
+//                    .orElse(defaultPort(schema));
             if (SCHEMA_SECURE.equals(schema)) {
                 secure = true;
             }
@@ -121,5 +126,4 @@ public class Http {
             throw new IllegalStateException("Can not find filename in url" + url);
         }
     }
-
 }
