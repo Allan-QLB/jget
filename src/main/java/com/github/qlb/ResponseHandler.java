@@ -33,7 +33,7 @@ public class ResponseHandler extends SimpleChannelInboundHandler<HttpObject> {
         final HttpHeaders headers = response.headers();
         if (response.status() == HttpResponseStatus.OK) {
             if (subTask == null) {
-                long contentLength = headers.getInt(HttpHeaderNames.CONTENT_LENGTH, -1);
+                long contentLength = Long.parseLong(headers.get(HttpHeaderNames.CONTENT_LENGTH, "-1"));
                 if (headers.contains(HttpHeaderNames.ACCEPT_RANGES)) {
                     allocateSubTasks(contentLength, Runtime.getRuntime().availableProcessors());
                 } else {
@@ -46,7 +46,8 @@ public class ResponseHandler extends SimpleChannelInboundHandler<HttpObject> {
             }
         } else if (response.status() == HttpResponseStatus.PARTIAL_CONTENT) {
             System.out.println("receive partial");
-        } else if (response.status() == HttpResponseStatus.FOUND) {
+        } else if (response.status() == HttpResponseStatus.FOUND
+                || response.status() == HttpResponseStatus.MOVED_PERMANENTLY) {
             String location = response.headers().get(HttpHeaderNames.LOCATION);
             ctx.close();
             if (StringUtil.isNullOrEmpty(location)) {
