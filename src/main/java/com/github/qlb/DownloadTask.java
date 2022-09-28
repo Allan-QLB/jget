@@ -1,6 +1,5 @@
 package com.github.qlb;
 
-import io.netty.handler.codec.http.HttpHeaders;
 import org.apache.commons.cli.CommandLine;
 
 import java.io.File;
@@ -18,17 +17,19 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
-public class DownloadTask {
+public class DownloadTask implements HttpTask {
     public static final ScheduledExecutorService PROGRESS_EXECUTOR = Executors.newSingleThreadScheduledExecutor();
     private static final int TEMP_FILE_READ_BATCH_SIZE = 8192;
+    private static final long NO_SIZE = 0;
     private static final String DEFAULT_DIR = Optional.ofNullable(System.getenv("HOME"))
             .orElse(System.getenv("HOMEPATH"));
     private State state;
     private final Http http;
     private final String targetDirectory;
     private final List<DownloadSubTask> subTasks = new ArrayList<>();
-    private long totalSize;
+    private long totalSize = NO_SIZE;
     private volatile long totalRead;
+    private final Client client;
     private ScheduledFuture<?> progress;
 
     public DownloadTask(CommandLine cli) {
@@ -40,6 +41,7 @@ public class DownloadTask {
     public DownloadTask(String url, String targetDirectory) {
         this.http = new Http(url);
         this.targetDirectory = targetDirectory;
+        this.client = new Client(this);
         this.state = State.created;
     }
 
@@ -47,13 +49,14 @@ public class DownloadTask {
         created,
         init,
         started,
+        failed,
         finished
     }
 
     enum Unit {
         B(1), KB(1 << 10), MB(1 << 20), GB(1 << 30);
         private final int factor;
-        private Unit(final int factor) {
+        Unit(final int factor) {
             this.factor = factor;
         }
     }
@@ -64,15 +67,14 @@ public class DownloadTask {
                 return;
             }
         }
-        mergeTempFiles();
-        state = State.finished;
+        finished();
     }
 
     private void mergeTempFiles() {
-        try (SeekableByteChannel target = Files.newByteChannel(new File(fileDirectory(), http.getFileName()).toPath(),
+        try (SeekableByteChannel target = Files.newByteChannel(new File(targetFileDirectory(), http.getFileName()).toPath(),
                 StandardOpenOption.WRITE, StandardOpenOption.CREATE)){
             for (DownloadSubTask subTask : subTasks) {
-                File tempFile = new File(fileDirectory(), subTask.getName());
+                File tempFile = new File(targetFileDirectory(), subTask.getName());
                 byte[] buffer = new byte[TEMP_FILE_READ_BATCH_SIZE];
                 try (InputStream input = Files.newInputStream(tempFile.toPath(), StandardOpenOption.READ)) {
                     int readBytes;
@@ -96,7 +98,10 @@ public class DownloadTask {
     void addSubTask(DownloadSubTask subTask) {
         if (state == State.created) {
             subTasks.add(subTask);
-            totalSize += subTask.getRange().size();
+            final long size = subTask.getRange().size();
+            if (size > 0) {
+                totalSize += size;
+            }
         } else {
             throw new IllegalStateException("Can not add subtask on state " + state);
         }
@@ -106,11 +111,12 @@ public class DownloadTask {
         return state == State.finished;
     }
 
+    @Override
     public Http getHttp() {
         return http;
     }
 
-    public void start() {
+    public void startSubTasks() {
         if (state == State.started || state == State.finished) {
             return;
         }
@@ -120,9 +126,56 @@ public class DownloadTask {
         state = State.started;
         System.out.println("Download Task " + this + "start");
         progress = PROGRESS_EXECUTOR.scheduleAtFixedRate(this::printProgress, 1, 1, TimeUnit.SECONDS);
+        disconnect();
     }
 
-    public String fileDirectory() {
+    public void discarded() {
+        disconnect();
+    }
+
+    public void disconnect() {
+        this.client.shutdown();
+    }
+
+    @Override
+    public void start() {
+        this.client.start();
+    }
+
+    @Override
+    public void restart() {
+        throw new UnsupportedOperationException("restart is unsupported");
+    }
+
+    @Override
+    public void finished() {
+        mergeTempFiles();
+        state = State.finished;
+        PROGRESS_EXECUTOR.shutdown();
+    }
+
+    @Override
+    public void failed() {
+        System.out.println("task " + this + " failed");
+        stop();
+        PROGRESS_EXECUTOR.shutdown();
+        disconnect();
+        state = State.failed;
+    }
+
+    @Override
+    public void stop() {
+        for (DownloadSubTask subTask : subTasks) {
+            subTask.stop();
+        }
+    }
+
+    public void subTaskFailed(DownloadSubTask subTask) {
+        failed();
+    }
+
+    @Override
+    public String targetFileDirectory() {
         return targetDirectory != null ? targetDirectory : DEFAULT_DIR;
     }
 
@@ -141,7 +194,11 @@ public class DownloadTask {
                 break;
             }
         }
-        System.out.printf("\r%.2f, transferred: %.2f%s%n", totalRead * 1.0 / totalSize, readUnited, unit);
+        if (totalSize != NO_SIZE) {
+            System.out.printf("\r%d%%, transferred: %.2f%s%n", totalRead * 100 / totalSize, readUnited, unit);
+        } else {
+            System.out.printf("transferred: %.2f%s%n", readUnited, unit);
+        }
         if (isFinished()) {
             progress.cancel(false);
         }

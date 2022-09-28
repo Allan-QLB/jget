@@ -10,19 +10,13 @@ import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 
 public class Client {
-    private final DownloadTask task;
-    private DownloadSubTask subTask;
+    private final HttpTask task;
     private final EventLoopGroup group = new NioEventLoopGroup(1);
     private Channel connection;
+    private volatile boolean closed;
 
-
-    public Client(DownloadTask task) {
+    public Client(HttpTask task) {
         this.task = task;
-    }
-
-    public Client(DownloadSubTask subTask) {
-        this.task = subTask.getParent();
-        this.subTask = subTask;
     }
 
     public void start() {
@@ -36,10 +30,10 @@ public class Client {
                     pipeline.addLast(SslContextBuilder
                             .forClient()
                             .trustManager(InsecureTrustManagerFactory.INSTANCE)
-                            .build().newHandler(channel.alloc()));
+                            .build().newHandler(channel.alloc(), http.getHost(), http.getPort()));
                 }
                 pipeline.addLast(new HttpClientCodec())
-                        .addLast(new ResponseHandler(task, subTask));
+                        .addLast(new ResponseHandler(task));
 
             }
         }).connect(http.getHost(), http.getPort()).addListener((ChannelFutureListener) f -> {
@@ -47,18 +41,27 @@ public class Client {
                 System.out.println("connect success");
                 connection = f.channel();
             } else {
-                System.out.println("connection failed");
                 f.cause().printStackTrace();
             }
         });
-        connect.channel().closeFuture().addListener((ChannelFutureListener) channelFuture -> group.shutdownGracefully());
+        connect.channel().closeFuture().addListener(f -> {
+            if (closed) {
+                group.shutdownGracefully();
+            } else {
+                task.failed();
+            }
+        });
     }
 
     public void shutdown() {
+        if (!closed) {
+            closed = true;
+        }
         if (connection != null && connection.isOpen()) {
             connection.close();
             System.out.println("Connection " + connection + " closed");
         }
+        group.shutdownGracefully();
     }
 
 }

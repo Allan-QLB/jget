@@ -10,14 +10,16 @@ import java.nio.file.Files;
 import java.nio.file.StandardOpenOption;
 import java.util.UUID;
 
-public class DownloadSubTask {
+public class DownloadSubTask implements HttpTask {
+    private static final int MAX_RETRY = 3;
     private final DownloadTask parent;
     private final Range range;
-    private final ByteChannel targetFileChannel;
+    private volatile ByteChannel targetFileChannel;
     private boolean finished;
     private final String name = UUID.randomUUID().toString();
     private long readBytes;
     private final Client client;
+    private int retry;
 
     public DownloadSubTask(DownloadTask parent, Range range) throws IOException {
         this.parent = parent;
@@ -28,15 +30,34 @@ public class DownloadSubTask {
     }
 
     private ByteChannel createTempFile() throws IOException {
-        File dir = new File(parent.fileDirectory());
+        File dir = new File(parent.targetFileDirectory());
         if (!dir.exists()) {
             Files.createDirectories(dir.toPath());
         }
-        return Files.newByteChannel(new File(parent.fileDirectory(), name).toPath(),
+        return Files.newByteChannel(new File(parent.targetFileDirectory(), name).toPath(),
                 StandardOpenOption.WRITE, StandardOpenOption.CREATE);
     }
+
+    @Override
+    public String targetFileDirectory() {
+        return parent.targetFileDirectory();
+    }
+
     public void start() {
         this.client.start();
+    }
+
+    @Override
+    public void restart() {
+        try {
+            targetFileChannel.close();
+            targetFileChannel = createTempFile();
+            start();
+        } catch (IOException e) {
+            e.printStackTrace();
+            failed();
+        }
+
     }
 
     public void finished() {
@@ -48,6 +69,21 @@ public class DownloadSubTask {
         }
         this.finished = true;
         parent.subTaskFinished();
+    }
+
+    @Override
+    public void failed() {
+        if (++retry <= MAX_RETRY) {
+            System.out.println("restart sub task " + this);
+            restart();
+        } else {
+            parent.subTaskFailed(this);
+        }
+    }
+
+    @Override
+    public void stop() {
+        client.shutdown();
     }
 
     public boolean isFinished() {
@@ -66,7 +102,7 @@ public class DownloadSubTask {
         return parent;
     }
 
-    public void accept(HttpContent httpContent) throws IOException {
+    public void receive(HttpContent httpContent) throws IOException {
         final ByteBuffer contentBuffer = httpContent.content().nioBuffer();
         int remaining = contentBuffer.remaining();
         int written = 0;
@@ -79,5 +115,10 @@ public class DownloadSubTask {
             System.out.println("subtask finished");
             finished();
         }
+    }
+
+    @Override
+    public Http getHttp() {
+        return parent.getHttp();
     }
 }
