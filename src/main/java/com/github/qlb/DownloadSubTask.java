@@ -77,8 +77,12 @@ public class DownloadSubTask extends HttpTask implements Retryable {
 
     @Override
     public void failed() {
-        System.out.println("subtask " + this + " failed");
-        parent.subTaskFailed(this);
+        if (canRetry()) {
+            retry();
+        } else {
+            System.out.println("subtask " + this + " failed");
+            parent.subTaskFailed(this);
+        }
     }
 
     @Override
@@ -98,16 +102,11 @@ public class DownloadSubTask extends HttpTask implements Retryable {
         return name;
     }
 
-    public DownloadTask getParent() {
-        return parent;
-    }
-
     public long getReadBytes() {
         return readBytes;
     }
 
     public void receive(ChannelHandlerContext ctx, HttpContent httpContent) throws IOException {
-        System.out.println(this +" received content!! ");
         if (idleProcess != null && !idleProcess.isDone()) {
             idleProcess.cancel(false);
         }
@@ -119,9 +118,14 @@ public class DownloadSubTask extends HttpTask implements Retryable {
         } while (written < remaining);
         readBytes += remaining;
         parent.reportRead(remaining);
-        if (readBytes == range.size() || httpContent instanceof LastHttpContent) {
-            System.out.println("subtask finished");
-            finished();
+        if (httpContent instanceof LastHttpContent) {
+            if (range.size() > 0 && range.size() != readBytes) {
+                System.out.println("subtask" + this + " failed because read bytes not match range size!");
+                failed();
+            } else {
+                System.out.println("subtask finished");
+                finished();
+            }
         } else {
             idleProcess = ctx.channel().eventLoop().schedule(this::processIdle, 2, TimeUnit.MINUTES);
         }
@@ -142,8 +146,6 @@ public class DownloadSubTask extends HttpTask implements Retryable {
         retry ++;
         System.out.println("restart sub task " + this);
         restart();
-
-
     }
 
     @Override

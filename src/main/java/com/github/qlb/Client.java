@@ -40,17 +40,12 @@ public class Client {
             if (f.isSuccess()) {
                 System.out.println("connect success");
             } else {
-                //System.out.println(f.cause().getMessage());
                 f.cause().printStackTrace();
             }
         });
         connectionFuture.channel().closeFuture().addListener(f -> {
             if (!closed) {
-                if (task instanceof Retryable && ((Retryable) task).canRetry()) {
-                    ((Retryable) task).retry();
-                } else {
-                    task.failed();
-                }
+                task.failed();
             }
         });
     }

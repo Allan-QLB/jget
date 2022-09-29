@@ -103,8 +103,4 @@ public class ResponseHandler extends SimpleChannelInboundHandler<HttpObject> {
        sendRequest(ctx, task.getHttp());
     }
 
-    @Override
-    public void channelInactive(ChannelHandlerContext ctx) {
-
-    }
 }
