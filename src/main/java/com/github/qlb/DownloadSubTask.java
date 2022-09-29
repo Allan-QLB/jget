@@ -10,7 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.StandardOpenOption;
 import java.util.UUID;
 
-public class DownloadSubTask implements HttpTask {
+public class DownloadSubTask extends HttpTask implements Retryable {
     private static final int MAX_RETRY = 3;
     private final DownloadTask parent;
     private final Range range;
@@ -18,7 +18,6 @@ public class DownloadSubTask implements HttpTask {
     private boolean finished;
     private final String name = UUID.randomUUID().toString();
     private long readBytes;
-    private final Client client;
     private int retry;
 
     public DownloadSubTask(DownloadTask parent, Range range) throws IOException {
@@ -43,11 +42,6 @@ public class DownloadSubTask implements HttpTask {
         return parent.targetFileDirectory();
     }
 
-    public void start() {
-        this.client.start();
-    }
-
-    @Override
     public void restart() {
         try {
             targetFileChannel.close();
@@ -57,7 +51,6 @@ public class DownloadSubTask implements HttpTask {
             e.printStackTrace();
             failed();
         }
-
     }
 
     public void finished() {
@@ -73,12 +66,8 @@ public class DownloadSubTask implements HttpTask {
 
     @Override
     public void failed() {
-        if (++retry <= MAX_RETRY) {
-            System.out.println("restart sub task " + this);
-            restart();
-        } else {
-            parent.subTaskFailed(this);
-        }
+        System.out.println("subtask " + this + " failed");
+        parent.subTaskFailed(this);
     }
 
     @Override
@@ -120,5 +109,19 @@ public class DownloadSubTask implements HttpTask {
     @Override
     public Http getHttp() {
         return parent.getHttp();
+    }
+
+    @Override
+    public void retry() {
+        retry ++;
+        System.out.println("restart sub task " + this);
+        restart();
+
+
+    }
+
+    @Override
+    public boolean canRetry() {
+        return retry < MAX_RETRY;
     }
 }

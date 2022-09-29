@@ -17,7 +17,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
-public class DownloadTask implements HttpTask {
+public class DownloadTask extends HttpTask {
     public static final ScheduledExecutorService PROGRESS_EXECUTOR = Executors.newSingleThreadScheduledExecutor();
     private static final int TEMP_FILE_READ_BATCH_SIZE = 8192;
     private static final long NO_SIZE = 0;
@@ -29,7 +29,6 @@ public class DownloadTask implements HttpTask {
     private final List<DownloadSubTask> subTasks = new ArrayList<>();
     private long totalSize = NO_SIZE;
     private volatile long totalRead;
-    private final Client client;
     private ScheduledFuture<?> progress;
 
     public DownloadTask(CommandLine cli) {
@@ -41,7 +40,6 @@ public class DownloadTask implements HttpTask {
     public DownloadTask(String url, String targetDirectory) {
         this.http = new Http(url);
         this.targetDirectory = targetDirectory;
-        this.client = new Client(this);
         this.state = State.created;
     }
 
@@ -135,16 +133,6 @@ public class DownloadTask implements HttpTask {
 
     public void disconnect() {
         this.client.shutdown();
-    }
-
-    @Override
-    public void start() {
-        this.client.start();
-    }
-
-    @Override
-    public void restart() {
-        throw new UnsupportedOperationException("restart is unsupported");
     }
 
     @Override

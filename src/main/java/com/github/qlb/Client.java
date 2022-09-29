@@ -45,10 +45,15 @@ public class Client {
             }
         });
         connect.channel().closeFuture().addListener(f -> {
-            if (closed) {
-                group.shutdownGracefully();
-            } else {
-                task.failed();
+            if (!closed) {
+                if (task instanceof Retryable) {
+                    Retryable retryable = (Retryable) task;
+                    if (retryable.canRetry()) {
+                        retryable.retry();
+                    }
+                } else {
+                    task.failed();
+                }
             }
         });
     }
