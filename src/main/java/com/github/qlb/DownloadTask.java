@@ -18,7 +18,6 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 public class DownloadTask extends HttpTask {
-    public static final ScheduledExecutorService PROGRESS_EXECUTOR = Executors.newSingleThreadScheduledExecutor();
     private static final int TEMP_FILE_READ_BATCH_SIZE = 8192;
     private static final long NO_SIZE = 0;
     private static final String DEFAULT_DIR = Optional.ofNullable(System.getenv("HOME"))
@@ -28,7 +27,6 @@ public class DownloadTask extends HttpTask {
     private final String targetDirectory;
     private final List<DownloadSubTask> subTasks = new ArrayList<>();
     private long totalSize = NO_SIZE;
-    private volatile long totalRead;
     private ScheduledFuture<?> progress;
 
     public DownloadTask(CommandLine cli) {
@@ -79,7 +77,6 @@ public class DownloadTask extends HttpTask {
                     while ((readBytes = input.read(buffer)) > 0) {
                         target.write(ByteBuffer.wrap(buffer, 0, readBytes));
                     }
-
                 }
                 Files.delete(tempFile.toPath());
             }
@@ -123,7 +120,7 @@ public class DownloadTask extends HttpTask {
         }
         state = State.started;
         System.out.println("Download Task " + this + "start");
-        progress = PROGRESS_EXECUTOR.scheduleAtFixedRate(this::printProgress, 1, 1, TimeUnit.SECONDS);
+        progress = registerTimer(this::printProgress, 1, 1, TimeUnit.SECONDS);
         disconnect();
     }
 
@@ -139,14 +136,14 @@ public class DownloadTask extends HttpTask {
     public void finished() {
         mergeTempFiles();
         state = State.finished;
-        PROGRESS_EXECUTOR.shutdown();
+        TIMER_EXECUTOR.shutdown();
     }
 
     @Override
     public void failed() {
         System.out.println("task " + this + " failed");
         stop();
-        PROGRESS_EXECUTOR.shutdown();
+        TIMER_EXECUTOR.shutdown();
         disconnect();
         state = State.failed;
     }
@@ -168,13 +165,22 @@ public class DownloadTask extends HttpTask {
     }
 
     public synchronized void reportRead(long readBytes) {
-        totalRead += readBytes;
+        //totalRead += readBytes;
+    }
+
+    private long totalRead() {
+        long totalRead = 0L;
+        for (DownloadSubTask subTask : subTasks) {
+            totalRead += subTask.getReadBytes();
+        }
+        return totalRead;
     }
 
     private void printProgress() {
         Unit[] values = Unit.values();
         double readUnited = 0D;
         Unit unit = Unit.B;
+        final long totalRead = totalRead();
         for (int i = values.length - 1; i >= 0; i--) {
             readUnited = totalRead * 1.0 / values[i].factor;
             if (readUnited >= 0.5) {

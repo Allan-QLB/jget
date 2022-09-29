@@ -56,6 +56,7 @@ public class Http {
             return url.substring(0, queryPoint);
         }
     }
+
     private void parseUrl(String url) {
         if (StringUtil.isNullOrEmpty(url)) {
             throw new IllegalArgumentException("Url can not be empty");
@@ -120,7 +121,7 @@ public class Http {
     }
 
     public String findFileName(String url, Map<String, String> query) {
-        final int lastSeparatorIdx = url.lastIndexOf("/");
+        final int lastSlashPosition = url.lastIndexOf("/");
         String name = null;
         if (query.containsKey(FILE_NAME_KEY_IN_QUERY)) {
             name =  query.get(FILE_NAME_KEY_IN_QUERY);
@@ -130,11 +131,17 @@ public class Http {
             final Pattern pattern = Pattern.compile(FILE_NAME_PATTERN_IN_HEADER);
             final Matcher matcher = pattern.matcher(responseHeaders.get(HttpHeaderNames.CONTENT_DISPOSITION));
             if (matcher.find()) {
-                name = matcher.group("fname");
+                final String fname = matcher.group("fname");
+                final int splitIndex = fname.indexOf(";");
+                if (splitIndex != -1) {
+                    name = fname.substring(0, splitIndex);
+                } else {
+                    name = fname;
+                }
             }
         }
-        if (name == null && lastSeparatorIdx != -1) {
-            name = url.substring(lastSeparatorIdx + 1);
+        if (name == null && lastSlashPosition != -1) {
+            name = url.substring(lastSlashPosition + 1);
         }
         if (name == null) {
             throw new IllegalStateException("Can not find filename for " + this);

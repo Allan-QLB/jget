@@ -19,7 +19,7 @@ public class ResponseHandler extends SimpleChannelInboundHandler<HttpObject> {
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, HttpObject msg) throws Exception {
             if (msg instanceof HttpContent) {
-                handleContent((HttpContent) msg);
+                handleContent(ctx, (HttpContent) msg);
             } else if (msg instanceof HttpResponse) {
                 handleResponse(ctx, (HttpResponse) msg);
             } else {
@@ -28,15 +28,16 @@ public class ResponseHandler extends SimpleChannelInboundHandler<HttpObject> {
     }
 
     private void handleResponse(ChannelHandlerContext ctx, HttpResponse response) throws IOException {
+        System.out.println(task + " receive response " + response.status().toString());
         final HttpHeaders headers = response.headers();
         if (response.status() == HttpResponseStatus.OK) {
             if (task instanceof DownloadTask) {
                 DownloadTask fullTask = (DownloadTask) task;
-                long contentLength = Long.parseLong(headers.get(HttpHeaderNames.CONTENT_LENGTH, "-1"));
+                long contentLength = Long.parseLong(headers.get(HttpHeaderNames.CONTENT_LENGTH, "0"));
                 if (headers.contains(HttpHeaderNames.ACCEPT_RANGES)) {
                     allocateSubTasks(fullTask, contentLength, Runtime.getRuntime().availableProcessors());
                 } else {
-                    allocateSubTasks(fullTask, contentLength, 1);
+                    allocateSubTasks(fullTask, 0, 1);
                 }
                 fullTask.startSubTasks();
             } else {
@@ -44,6 +45,7 @@ public class ResponseHandler extends SimpleChannelInboundHandler<HttpObject> {
             }
         } else if (response.status() == HttpResponseStatus.PARTIAL_CONTENT) {
             System.out.println("receive partial");
+            task.getHttp().setResponseHeaders(headers);
         } else if ((response.status() == HttpResponseStatus.FOUND || response.status() == HttpResponseStatus.MOVED_PERMANENTLY)
                 && task instanceof DownloadTask) {
             String location = response.headers().get(HttpHeaderNames.LOCATION);
@@ -51,16 +53,17 @@ public class ResponseHandler extends SimpleChannelInboundHandler<HttpObject> {
                 throw new IllegalStateException("Location is absent in response headers");
             }
             ((DownloadTask) task).discarded();
-            new Client(new DownloadTask(location, task.targetFileDirectory())).start();
+            System.out.println("redirect to " + location);
+            new DownloadTask(location, task.targetFileDirectory()).start();
         } else {
             System.out.println("failed " + response);
-            ctx.close();
+            task.failed();
         }
     }
 
-    private void handleContent(HttpContent content) throws IOException {
+    private void handleContent(ChannelHandlerContext ctx, HttpContent content) throws IOException {
         if (task instanceof DownloadSubTask) {
-            ((DownloadSubTask) task).receive(content);
+            ((DownloadSubTask) task).receive(ctx, content);
         }
     }
 
@@ -80,8 +83,13 @@ public class ResponseHandler extends SimpleChannelInboundHandler<HttpObject> {
         request.headers().set(HttpHeaderNames.HOST, http.getHost());
         if (task instanceof DownloadSubTask) {
             request.setMethod(HttpMethod.GET);
-            request.headers().set(HttpHeaderNames.RANGE, String.format("bytes=%s-%s", ((DownloadSubTask) task).getRange().getStart(), ((DownloadSubTask) task).getRange().getEnd()));
+            final Range range = ((DownloadSubTask) task).getRange();
+            if (range.size() > 0) {
+                request.headers().set(HttpHeaderNames.RANGE,
+                        String.format("bytes=%s-%s", range.getStart(), range.getEnd()));
+            }
         }
+        System.out.println("send request " +  request);
         ctx.writeAndFlush(request);
     }
 

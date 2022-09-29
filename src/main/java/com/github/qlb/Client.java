@@ -12,17 +12,17 @@ import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 public class Client {
     private final HttpTask task;
     private final EventLoopGroup group = new NioEventLoopGroup(1);
-    private Channel connection;
+    private ChannelFuture connectionFuture;
     private volatile boolean closed;
 
     public Client(HttpTask task) {
         this.task = task;
     }
 
-    public void start() {
+    public synchronized void start() {
         Bootstrap bootstrap = new Bootstrap();
         final Http http = task.getHttp();
-        final ChannelFuture connect = bootstrap.group(group).channel(NioSocketChannel.class).handler(new ChannelInitializer<Channel>() {
+        connectionFuture = bootstrap.group(group).channel(NioSocketChannel.class).handler(new ChannelInitializer<Channel>() {
             @Override
             protected void initChannel(Channel channel) throws Exception {
                 final ChannelPipeline pipeline = channel.pipeline();
@@ -39,34 +39,46 @@ public class Client {
         }).connect(http.getHost(), http.getPort()).addListener((ChannelFutureListener) f -> {
             if (f.isSuccess()) {
                 System.out.println("connect success");
-                connection = f.channel();
             } else {
+                //System.out.println(f.cause().getMessage());
                 f.cause().printStackTrace();
+                if (closed) {
+                    group.shutdownGracefully();
+                }
             }
         });
-        connect.channel().closeFuture().addListener(f -> {
+        connectionFuture.channel().closeFuture().addListener(f -> {
             if (!closed) {
-                if (task instanceof Retryable) {
-                    Retryable retryable = (Retryable) task;
-                    if (retryable.canRetry()) {
-                        retryable.retry();
-                    }
+                if (task instanceof Retryable && ((Retryable) task).canRetry()) {
+                    ((Retryable) task).retry();
                 } else {
                     task.failed();
                 }
+            } else {
+                group.shutdownGracefully();
             }
         });
     }
 
-    public void shutdown() {
-        if (!closed) {
-            closed = true;
+    public synchronized void shutdown() {
+        if (closed) {
+            return;
         }
-        if (connection != null && connection.isOpen()) {
-            connection.close();
-            System.out.println("Connection " + connection + " closed");
+        closed = true;
+        if (connectionFuture != null && group.isShutdown()) {
+            final Channel channel = connectionFuture.channel();
+            if (channel.isOpen()) {
+                channel.close();
+                System.out.println("close channel" + channel);
+            } else {
+                connectionFuture.addListener((ChannelFutureListener) future -> {
+                    if (channel.isOpen()) {
+                        System.out.println("close channel" + channel);
+                        channel.close();
+                    }
+                });
+            }
         }
-        group.shutdownGracefully();
     }
 
 }

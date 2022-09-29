@@ -1,4 +1,5 @@
 package com.github.qlb;
+import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.HttpContent;
 import io.netty.handler.codec.http.LastHttpContent;
 
@@ -9,6 +10,8 @@ import java.nio.channels.ByteChannel;
 import java.nio.file.Files;
 import java.nio.file.StandardOpenOption;
 import java.util.UUID;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 
 public class DownloadSubTask extends HttpTask implements Retryable {
     private static final int MAX_RETRY = 3;
@@ -17,6 +20,7 @@ public class DownloadSubTask extends HttpTask implements Retryable {
     private volatile ByteChannel targetFileChannel;
     private boolean finished;
     private final String name = UUID.randomUUID().toString();
+    private volatile ScheduledFuture<?> idleProcess;
     private long readBytes;
     private int retry;
 
@@ -44,13 +48,20 @@ public class DownloadSubTask extends HttpTask implements Retryable {
 
     public void restart() {
         try {
-            targetFileChannel.close();
-            targetFileChannel = createTempFile();
+            reset();
             start();
         } catch (IOException e) {
             e.printStackTrace();
             failed();
         }
+    }
+
+    private void reset() throws IOException {
+        if (targetFileChannel != null && targetFileChannel.isOpen()) {
+            targetFileChannel.close();
+        }
+        targetFileChannel = createTempFile();
+        readBytes = 0;
     }
 
     public void finished() {
@@ -91,7 +102,15 @@ public class DownloadSubTask extends HttpTask implements Retryable {
         return parent;
     }
 
-    public void receive(HttpContent httpContent) throws IOException {
+    public long getReadBytes() {
+        return readBytes;
+    }
+
+    public void receive(ChannelHandlerContext ctx, HttpContent httpContent) throws IOException {
+        System.out.println(this +" received content!! ");
+        if (idleProcess != null && !idleProcess.isDone()) {
+            idleProcess.cancel(false);
+        }
         final ByteBuffer contentBuffer = httpContent.content().nioBuffer();
         int remaining = contentBuffer.remaining();
         int written = 0;
@@ -103,7 +122,14 @@ public class DownloadSubTask extends HttpTask implements Retryable {
         if (readBytes == range.size() || httpContent instanceof LastHttpContent) {
             System.out.println("subtask finished");
             finished();
+        } else {
+            idleProcess = ctx.channel().eventLoop().schedule(this::processIdle, 2, TimeUnit.MINUTES);
         }
+    }
+
+    private void processIdle() {
+        System.out.println("task " + this + " is idle, restart!");
+        restart();
     }
 
     @Override
