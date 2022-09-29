@@ -42,9 +42,6 @@ public class Client {
             } else {
                 //System.out.println(f.cause().getMessage());
                 f.cause().printStackTrace();
-                if (closed) {
-                    group.shutdownGracefully();
-                }
             }
         });
         connectionFuture.channel().closeFuture().addListener(f -> {
@@ -54,8 +51,6 @@ public class Client {
                 } else {
                     task.failed();
                 }
-            } else {
-                group.shutdownGracefully();
             }
         });
     }
@@ -65,17 +60,19 @@ public class Client {
             return;
         }
         closed = true;
-        if (connectionFuture != null && group.isShutdown()) {
+        if (connectionFuture != null) {
             final Channel channel = connectionFuture.channel();
             if (channel.isOpen()) {
                 channel.close();
                 System.out.println("close channel" + channel);
+                group.shutdownGracefully();
             } else {
                 connectionFuture.addListener((ChannelFutureListener) future -> {
                     if (channel.isOpen()) {
                         System.out.println("close channel" + channel);
                         channel.close();
                     }
+                    group.shutdownGracefully();
                 });
             }
         }
