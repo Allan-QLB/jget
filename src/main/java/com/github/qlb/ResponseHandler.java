@@ -11,7 +11,7 @@ import java.io.IOException;
 
 public class ResponseHandler extends SimpleChannelInboundHandler<HttpObject> {
     private final HttpTask task;
-
+    private Throwable error;
     public ResponseHandler(HttpTask task) {
         this.task = task;
     }
@@ -56,12 +56,15 @@ public class ResponseHandler extends SimpleChannelInboundHandler<HttpObject> {
             System.out.println("redirect to " + location);
             new DownloadTask(location, task.targetFileDirectory()).start();
         } else {
-            System.out.println("failed " + response);
-            task.failed();
+            throw new IllegalStateException("unexpected response");
         }
     }
 
     private void handleContent(ChannelHandlerContext ctx, HttpContent content) throws IOException {
+        if (error != null) {
+            System.out.println("ignore content because there is error occurred " + error);
+            return;
+        }
         if (task instanceof DownloadSubTask) {
             ((DownloadSubTask) task).receive(ctx, content);
         }
@@ -89,13 +92,15 @@ public class ResponseHandler extends SimpleChannelInboundHandler<HttpObject> {
                         String.format("bytes=%s-%s", range.getStart(), range.getEnd()));
             }
         }
-        System.out.println("send request " +  request);
+        System.out.println(task + " send request url:" +  request.uri());
         ctx.writeAndFlush(request);
     }
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-        cause.printStackTrace();
+        System.out.println("exception caught " + cause);
+        error = cause;
+        task.failed();
     }
 
     @Override
