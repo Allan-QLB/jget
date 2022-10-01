@@ -5,14 +5,17 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.*;
 import io.netty.util.internal.StringUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 
 
-public class ResponseHandler extends SimpleChannelInboundHandler<HttpObject> {
+public class HttpHandler extends SimpleChannelInboundHandler<HttpObject> {
+    private static final Logger LOG = LoggerFactory.getLogger(HttpHandler.class);
     private final HttpTask task;
     private Throwable error;
-    public ResponseHandler(HttpTask task) {
+    public HttpHandler(HttpTask task) {
         this.task = task;
     }
 
@@ -23,12 +26,12 @@ public class ResponseHandler extends SimpleChannelInboundHandler<HttpObject> {
             } else if (msg instanceof HttpResponse) {
                 handleResponse(ctx, (HttpResponse) msg);
             } else {
-                System.out.println(msg);
+                throw new IllegalStateException("Unexpected message type " + msg.getClass());
             }
     }
 
     private void handleResponse(ChannelHandlerContext ctx, HttpResponse response) throws IOException {
-        System.out.println(task + " receive response " + response.status().toString());
+        LOG.info("{} receive response {}", task, response.status());
         final HttpHeaders headers = response.headers();
         if (response.status() == HttpResponseStatus.OK) {
             if (task instanceof DownloadTask) {
@@ -44,7 +47,7 @@ public class ResponseHandler extends SimpleChannelInboundHandler<HttpObject> {
                 task.getHttp().setResponseHeaders(headers);
             }
         } else if (response.status() == HttpResponseStatus.PARTIAL_CONTENT) {
-            System.out.println("receive partial");
+            LOG.info("receive partial content, task {}", task);
             task.getHttp().setResponseHeaders(headers);
         } else if ((response.status() == HttpResponseStatus.FOUND || response.status() == HttpResponseStatus.MOVED_PERMANENTLY)
                 && task instanceof DownloadTask) {
@@ -53,7 +56,7 @@ public class ResponseHandler extends SimpleChannelInboundHandler<HttpObject> {
                 throw new IllegalStateException("Location is absent in response headers");
             }
             ((DownloadTask) task).discarded();
-            System.out.println("redirect to " + location);
+            LOG.info("redirect to {}, task {}", location, task);
             new DownloadTask(location, task.targetFileDirectory()).start();
         } else {
             throw new IllegalStateException("unexpected response");
@@ -62,7 +65,7 @@ public class ResponseHandler extends SimpleChannelInboundHandler<HttpObject> {
 
     private void handleContent(ChannelHandlerContext ctx, HttpContent content) throws IOException {
         if (error != null) {
-            System.out.println("ignore content because there is error occurred " + error);
+            LOG.warn("ignore content because there is error occurred, task {}", task);
             return;
         }
         if (task instanceof DownloadSubTask) {
@@ -92,13 +95,13 @@ public class ResponseHandler extends SimpleChannelInboundHandler<HttpObject> {
                         String.format("bytes=%s-%s", range.getStart(), range.getEnd()));
             }
         }
-        System.out.println(task + " send request url:" +  request.uri());
+        LOG.info("send request , url {}, task {}", request.uri(), task);
         ctx.writeAndFlush(request);
     }
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-        System.out.println("exception caught " + cause);
+        LOG.error("exception caught, task {}", task, error);
         error = cause;
         task.failed();
     }

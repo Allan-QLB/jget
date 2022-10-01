@@ -8,8 +8,11 @@ import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.http.HttpClientCodec;
 import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class Client {
+    private static final Logger LOG = LoggerFactory.getLogger(Client.class);
     private final HttpTask task;
     private final ChannelFutureListener logCloseListener;
     private final EventLoopGroup group = new NioEventLoopGroup(1);
@@ -19,7 +22,7 @@ public class Client {
 
     public Client(HttpTask task) {
         this.task = task;
-        logCloseListener = f -> System.out.println(task + " connection " + f.channel() + " is closed");
+        logCloseListener = f -> LOG.info("connection {} is closed, task {} ", f.channel(), task);
     }
 
     public synchronized void start() {
@@ -37,15 +40,14 @@ public class Client {
                             .build().newHandler(channel.alloc(), http.getHost(), http.getPort()));
                 }
                 pipeline.addLast(new HttpClientCodec())
-                        .addLast(new ResponseHandler(task));
+                        .addLast(new HttpHandler(task));
 
             }
         }).connect(http.getHost(), http.getPort()).addListener((ChannelFutureListener) f -> {
             if (f.isSuccess()) {
-                System.out.println(task + " connect success " + f.channel());
+                LOG.info("connect success, task {}, channel {}", task, f.channel());
             } else {
-                System.out.println(task + " connect fail " + f.channel());
-                f.cause().printStackTrace();
+                LOG.error("connect fail, task {}, channel {}", task, f.channel(), f.cause());
             }
         });
         connectionCloseListener = f -> task.failed();

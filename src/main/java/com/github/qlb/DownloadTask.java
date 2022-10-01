@@ -1,6 +1,8 @@
 package com.github.qlb;
 
 import org.apache.commons.cli.CommandLine;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
@@ -16,6 +18,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 public class DownloadTask extends HttpTask {
+    private static final Logger LOG = LoggerFactory.getLogger(DownloadTask.class);
     private static final int TEMP_FILE_READ_BATCH_SIZE = 8192;
     private static final long NO_SIZE = 0;
     private static final String DEFAULT_DIR = Optional.ofNullable(System.getenv("HOME"))
@@ -78,9 +81,9 @@ public class DownloadTask extends HttpTask {
                 }
                 Files.delete(tempFile.toPath());
             }
-            System.out.println("merge temp files finish");
+            LOG.info("finish merge temp files");
         } catch (IOException e) {
-            e.printStackTrace();
+            LOG.error("Error merge temp files", e);
         }
     }
 
@@ -117,7 +120,7 @@ public class DownloadTask extends HttpTask {
             subTask.start();
         }
         state = State.started;
-        System.out.println("Download Task " + this + "start");
+        LOG.info("Start task {}", this);
         progress = registerTimer(this::printProgress, 1, 1, TimeUnit.SECONDS);
         disconnect();
     }
@@ -139,7 +142,7 @@ public class DownloadTask extends HttpTask {
 
     @Override
     public void failed() {
-        System.out.println("task " + this + " failed");
+        LOG.error("task {} failed", this);
         stop();
         TIMER_EXECUTOR.shutdown();
         disconnect();

@@ -2,6 +2,8 @@ package com.github.qlb;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.HttpContent;
 import io.netty.handler.codec.http.LastHttpContent;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
@@ -14,6 +16,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 public class DownloadSubTask extends HttpTask implements Retryable {
+    private static final Logger LOG = LoggerFactory.getLogger(DownloadSubTask.class);
     private static final int MAX_RETRY = 3;
     private final DownloadTask parent;
     private final Range range;
@@ -48,6 +51,7 @@ public class DownloadSubTask extends HttpTask implements Retryable {
 
     public void restart() {
         try {
+            LOG.info("restart subtask {}", this);
             reset();
             start();
         } catch (IOException e) {
@@ -80,7 +84,7 @@ public class DownloadSubTask extends HttpTask implements Retryable {
         if (canRetry()) {
             retry();
         } else {
-            System.out.println("subtask " + this + " failed");
+            LOG.info("subtask {} failed", this);
             parent.subTaskFailed(this);
         }
     }
@@ -120,10 +124,10 @@ public class DownloadSubTask extends HttpTask implements Retryable {
         parent.reportRead(remaining);
         if (httpContent instanceof LastHttpContent) {
             if (range.size() > 0 && range.size() != readBytes) {
-                System.out.println("subtask" + this + " failed because read bytes not match range size!");
+                LOG.error("subtask {} read bytes not match range size!", this);
                 failed();
             } else {
-                System.out.println("subtask finished");
+                LOG.info("subtask {}, finished", this);
                 finished();
             }
         } else {
@@ -132,7 +136,7 @@ public class DownloadSubTask extends HttpTask implements Retryable {
     }
 
     private void processIdle() {
-        System.out.println("task " + this + " is idle, restart!");
+        LOG.warn("subtask {} is idle, will restart", this);
         restart();
     }
 
@@ -144,7 +148,7 @@ public class DownloadSubTask extends HttpTask implements Retryable {
     @Override
     public void retry() {
         retry ++;
-        System.out.println("restart sub task " + this);
+        LOG.info("retry subtask {}, retry {}", this, retry);
         restart();
     }
 
