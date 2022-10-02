@@ -3,9 +3,22 @@ package com.github.qlb;
 import org.apache.commons.cli.*;
 
 public class Launcher {
-    public static void main(String[] args) throws ParseException {
+    public static void main(String[] args) {
         final DefaultParser parser = new DefaultParser();
-        final CommandLine cli = parser.parse(DownloadOptions.getDefaultOptions(), args);
-        new DownloadTask(cli).start();
+        HelpFormatter helpFormatter = new HelpFormatter();
+        final Options options = DownloadOptions.getDefaultOptions();
+        try {
+            final CommandLine cli = parser.parse(options, args);
+            if (cli.hasOption(DownloadOptions.HELP)) {
+                helpFormatter.printHelp("jget", options);
+            } else if (cli.hasOption(DownloadOptions.URL)) {
+                new DownloadTask(cli).start();
+            } else {
+                throw new ParseException("Missing argument url");
+            }
+        } catch (ParseException e) {
+            e.printStackTrace();
+            helpFormatter.printHelp("jget", options);
+        }
     }
 }

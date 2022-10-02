@@ -10,19 +10,26 @@ public class DownloadOptions {
             .argName("url")
             .desc("download url")
             .hasArg()
-            .required().build();
+            .build();
 
     public static final Option HOME_DIR = Option.builder()
-            .option("h")
-            .argName("home")
+            .option("d")
+            .argName("directory")
             .desc("home directory")
             .hasArg().build();
+
+    public static final Option HELP = Option.builder()
+            .option("h")
+            .desc("print help")
+            .hasArg(false)
+            .build();
 
 
     public static Options getDefaultOptions() {
         final Options options = new Options();
         options.addOption(URL);
         options.addOption(HOME_DIR);
+        options.addOption(HELP);
         return options;
     }
 }
