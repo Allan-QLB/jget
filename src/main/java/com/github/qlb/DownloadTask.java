@@ -14,15 +14,17 @@ import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
-public class DownloadTask extends HttpTask {
+public class DownloadTask extends HttpTask implements SnapshottingTask {
     private static final Logger LOG = LoggerFactory.getLogger(DownloadTask.class);
     private static final int TEMP_FILE_READ_BATCH_SIZE = 8192;
     private static final long NO_SIZE = 0;
     private static final String DEFAULT_DIR = Optional.ofNullable(System.getenv("HOME"))
             .orElse(System.getenv("HOMEPATH"));
+    private final String id;
     private State state;
     private final Http http;
     private final String targetDirectory;
@@ -37,14 +39,27 @@ public class DownloadTask extends HttpTask {
     }
 
     public DownloadTask(String url, String targetDirectory) {
+        this.id = UUID.randomUUID().toString();
         this.http = new Http(url);
         this.targetDirectory = targetDirectory;
         this.state = State.created;
     }
 
+    public DownloadTask(String id, String url, String targetDirectory) {
+        this.id = id;
+        this.http = new Http(url);
+        this.targetDirectory = targetDirectory;
+        this.state = State.created;
+    }
+
+    @Override
+    public String id() {
+        return id;
+    }
+
     enum State {
         created,
-        init,
+        ready,
         started,
         failed,
         finished
@@ -68,10 +83,10 @@ public class DownloadTask extends HttpTask {
     }
 
     private void mergeTempFiles() {
-        try (SeekableByteChannel target = Files.newByteChannel(new File(targetFileDirectory(), http.getFileName()).toPath(),
+        try (SeekableByteChannel target = Files.newByteChannel(new File(targetFileDirectory(), targetFileName()).toPath(),
                 StandardOpenOption.WRITE, StandardOpenOption.CREATE)){
             for (DownloadSubTask subTask : subTasks) {
-                File tempFile = new File(targetFileDirectory(), subTask.getName());
+                File tempFile = new File(targetFileDirectory(), subTask.targetFileName());
                 byte[] buffer = new byte[TEMP_FILE_READ_BATCH_SIZE];
                 try (InputStream input = Files.newInputStream(tempFile.toPath(), StandardOpenOption.READ)) {
                     int readBytes;
@@ -87,10 +102,6 @@ public class DownloadTask extends HttpTask {
         }
     }
 
-    public void initiated() {
-        state = State.init;
-    }
-
     void addSubTask(DownloadSubTask subTask) {
         if (state == State.created) {
             subTasks.add(subTask);
@@ -103,6 +114,7 @@ public class DownloadTask extends HttpTask {
         }
     }
 
+    @Override
     public boolean isFinished() {
         return state == State.finished;
     }
@@ -117,11 +129,14 @@ public class DownloadTask extends HttpTask {
             return;
         }
         for (DownloadSubTask subTask : subTasks) {
-            subTask.start();
+            if (!subTask.isFinished()) {
+                subTask.start();
+            }
         }
         state = State.started;
         LOG.info("Start task {}", this);
         progress = registerTimer(this::printProgress, 1, 1, TimeUnit.SECONDS);
+        TaskManager.INSTANCE.addTask(this);
         disconnect();
     }
 
@@ -137,6 +152,7 @@ public class DownloadTask extends HttpTask {
     public void finished() {
         mergeTempFiles();
         state = State.finished;
+        TaskManager.INSTANCE.remove(id);
         TIMER_EXECUTOR.shutdown();
     }
 
@@ -147,6 +163,12 @@ public class DownloadTask extends HttpTask {
         TIMER_EXECUTOR.shutdown();
         disconnect();
         state = State.failed;
+    }
+
+    @Override
+    public void ready() {
+        state = State.ready;
+        startSubTasks();
     }
 
     @Override
@@ -163,6 +185,19 @@ public class DownloadTask extends HttpTask {
     @Override
     public String targetFileDirectory() {
         return targetDirectory != null ? targetDirectory : DEFAULT_DIR;
+    }
+
+    @Override
+    public String targetFileName() {
+        return http.getFileName();
+    }
+
+    @Override
+    public int finishedPercent() {
+        if (totalSize == NO_SIZE) {
+            return UNKNOWN_PERCENT;
+        }
+        return (int) (totalRead() * 100/ totalSize);
     }
 
     public synchronized void reportRead(long readBytes) {
@@ -199,4 +234,24 @@ public class DownloadTask extends HttpTask {
         }
     }
 
+    @Override
+    public TaskSnapshot snapshot() {
+        final TaskSnapshot taskSnapshot = new TaskSnapshot(id, getHttp().getUrl(), totalSize,
+                targetFileDirectory(), http.getFileName());
+        for (DownloadSubTask subTask : subTasks) {
+            taskSnapshot.getSubtasks().add(subTask.snapshot());
+        }
+        return taskSnapshot;
+    }
+
+    @Override
+    public String toString() {
+        return "DownloadTask{" +
+                "state=" + state +
+                ", http=" + http +
+                ", targetDirectory='" + targetDirectory + '\'' +
+                ", subTasks=" + subTasks +
+                ", totalSize=" + totalSize +
+                '}';
+    }
 }

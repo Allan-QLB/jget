@@ -8,10 +8,9 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.channels.ByteChannel;
+import java.nio.channels.SeekableByteChannel;
 import java.nio.file.Files;
 import java.nio.file.StandardOpenOption;
-import java.util.UUID;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -20,28 +19,46 @@ public class DownloadSubTask extends HttpTask implements Retryable {
     private static final int MAX_RETRY = 3;
     private final DownloadTask parent;
     private final Range range;
-    private volatile ByteChannel targetFileChannel;
+    private volatile SeekableByteChannel targetFileChannel;
     private boolean finished;
-    private final String name = UUID.randomUUID().toString();
+    private final int index;
     private volatile ScheduledFuture<?> idleProcess;
     private long readBytes;
     private int retry;
 
-    public DownloadSubTask(DownloadTask parent, Range range) throws IOException {
+    public DownloadSubTask(DownloadTask parent, int index, Range range) throws IOException {
         this.parent = parent;
+        this.index = index;
         this.range = range;
         this.finished = false;
         this.client = new Client(this);
-        this.targetFileChannel = createTempFile();
+        this.targetFileChannel = createTempFile(readBytes);
     }
 
-    private ByteChannel createTempFile() throws IOException {
+    public DownloadSubTask(DownloadTask parent, int index, Range range, long readBytes) throws IOException {
+        this.parent = parent;
+        this.index = index;
+        this.range = range;
+        if (range.size() > 0 && readBytes >= range.size()) {
+            this.finished = true;
+        } else {
+            this.finished = false;
+        }
+        this.client = new Client(this);
+        this.targetFileChannel = createTempFile(readBytes);
+        this.readBytes = readBytes;
+    }
+
+    private SeekableByteChannel createTempFile(long position) throws IOException {
         File dir = new File(parent.targetFileDirectory());
         if (!dir.exists()) {
             Files.createDirectories(dir.toPath());
         }
-        return Files.newByteChannel(new File(parent.targetFileDirectory(), name).toPath(),
-                StandardOpenOption.WRITE, StandardOpenOption.CREATE);
+        return Files.newByteChannel(new File(dir, targetFileName()).toPath(),
+                        StandardOpenOption.READ,
+                        StandardOpenOption.WRITE,
+                        StandardOpenOption.CREATE)
+                .position(position);
     }
 
     @Override
@@ -64,7 +81,7 @@ public class DownloadSubTask extends HttpTask implements Retryable {
         if (targetFileChannel != null && targetFileChannel.isOpen()) {
             targetFileChannel.close();
         }
-        targetFileChannel = createTempFile();
+        targetFileChannel = createTempFile(0);
         readBytes = 0;
     }
 
@@ -94,6 +111,11 @@ public class DownloadSubTask extends HttpTask implements Retryable {
         client.shutdown();
     }
 
+    public SubTaskSnapshot snapshot() {
+        return new SubTaskSnapshot(index, range, readBytes);
+    }
+
+    @Override
     public boolean isFinished() {
         return finished;
     }
@@ -102,8 +124,14 @@ public class DownloadSubTask extends HttpTask implements Retryable {
         return range;
     }
 
-    public String getName() {
-        return name;
+    @Override
+    public String targetFileName() {
+        return parent.id() + "_" + index;
+    }
+
+    @Override
+    public void ready() {
+        parent.addSubTask(this);
     }
 
     public long getReadBytes() {
@@ -155,5 +183,19 @@ public class DownloadSubTask extends HttpTask implements Retryable {
     @Override
     public boolean canRetry() {
         return retry < MAX_RETRY;
+    }
+
+    @Override
+    public String toString() {
+        return "DownloadSubTask{" +
+                "parent=" + parent.id() +
+                ", range=" + range +
+                ", targetFileChannel=" + targetFileChannel +
+                ", finished=" + finished +
+                ", index=" + index +
+                ", idleProcess=" + idleProcess +
+                ", readBytes=" + readBytes +
+                ", retry=" + retry +
+                '}';
     }
 }

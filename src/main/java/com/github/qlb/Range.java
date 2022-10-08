@@ -20,4 +20,12 @@ public class Range {
     public long getEnd() {
         return end;
     }
+
+    @Override
+    public String toString() {
+        return "Range{" +
+                "start=" + start +
+                ", end=" + end +
+                '}';
+    }
 }

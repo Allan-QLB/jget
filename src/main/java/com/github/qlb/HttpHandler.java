@@ -42,7 +42,7 @@ public class HttpHandler extends SimpleChannelInboundHandler<HttpObject> {
                 } else {
                     allocateSubTasks(fullTask, 0, 1);
                 }
-                fullTask.startSubTasks();
+                fullTask.ready();
             } else {
                 task.getHttp().setResponseHeaders(headers);
             }
@@ -77,9 +77,9 @@ public class HttpHandler extends SimpleChannelInboundHandler<HttpObject> {
         long size = totalLen / numSubTasks;
         for (int i = 0; i < numSubTasks; i++) {
             if (i != numSubTasks - 1) {
-                task.addSubTask(new DownloadSubTask(task, new Range(i * size, (i + 1) * size - 1)));
+               new DownloadSubTask(task, i, new Range(i * size, (i + 1) * size - 1)).ready();
             } else {
-                task.addSubTask(new DownloadSubTask(task, new Range(i * size, totalLen - 1)));
+                new DownloadSubTask(task, i, new Range(i * size, totalLen - 1)).ready();
             }
         }
     }
@@ -90,9 +90,12 @@ public class HttpHandler extends SimpleChannelInboundHandler<HttpObject> {
         if (task instanceof DownloadSubTask) {
             request.setMethod(HttpMethod.GET);
             final Range range = ((DownloadSubTask) task).getRange();
-            if (range.size() > 0) {
+            long readBytes = ((DownloadSubTask) task).getReadBytes();
+            if (task.isFinished()) {
+                return;
+            } else if (range.size() > 0 && readBytes < range.size()) {
                 request.headers().set(HttpHeaderNames.RANGE,
-                        String.format("bytes=%s-%s", range.getStart(), range.getEnd()));
+                        String.format("bytes=%s-%s", range.getStart() + readBytes, range.getEnd()));
             }
         }
         LOG.info("send request , url {}, task {}", request.uri(), task);
