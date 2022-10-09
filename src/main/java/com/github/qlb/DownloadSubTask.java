@@ -32,7 +32,7 @@ public class DownloadSubTask extends HttpTask implements Retryable {
         this.range = range;
         this.finished = false;
         this.client = new Client(this);
-        this.targetFileChannel = createTempFile(readBytes);
+        //this.targetFileChannel = createTempFile(readBytes);
     }
 
     public DownloadSubTask(DownloadTask parent, int index, Range range, long readBytes) throws IOException {
@@ -45,21 +45,10 @@ public class DownloadSubTask extends HttpTask implements Retryable {
             this.finished = false;
         }
         this.client = new Client(this);
-        this.targetFileChannel = createTempFile(readBytes);
+        //this.targetFileChannel = createTempFile(readBytes);
         this.readBytes = readBytes;
     }
 
-    private SeekableByteChannel createTempFile(long position) throws IOException {
-        File dir = new File(parent.targetFileDirectory());
-        if (!dir.exists()) {
-            Files.createDirectories(dir.toPath());
-        }
-        return Files.newByteChannel(new File(dir, targetFileName()).toPath(),
-                        StandardOpenOption.READ,
-                        StandardOpenOption.WRITE,
-                        StandardOpenOption.CREATE)
-                .position(position);
-    }
 
     @Override
     public String targetFileDirectory() {
@@ -78,20 +67,16 @@ public class DownloadSubTask extends HttpTask implements Retryable {
     }
 
     private void reset() throws IOException {
-        if (targetFileChannel != null && targetFileChannel.isOpen()) {
-            targetFileChannel.close();
-        }
-        targetFileChannel = createTempFile(0);
+//        if (targetFileChannel != null && targetFileChannel.isOpen()) {
+//            targetFileChannel.close();
+//        }
+//        targetFileChannel = createTempFile(0);
         readBytes = 0;
     }
 
     public void finished() {
-        try {
-            targetFileChannel.close();
-            client.shutdown();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+
+        client.shutdown();
         this.finished = true;
         parent.subTaskFinished();
     }
@@ -145,9 +130,12 @@ public class DownloadSubTask extends HttpTask implements Retryable {
         final ByteBuffer contentBuffer = httpContent.content().nioBuffer();
         int remaining = contentBuffer.remaining();
         int written = 0;
-        do {
-            written += targetFileChannel.write(contentBuffer);
-        } while (written < remaining);
+        synchronized (targetFileChannel) {
+            targetFileChannel.position(range.getStart() + readBytes);
+            do {
+                written += targetFileChannel.write(contentBuffer);
+            } while (written < remaining);
+        }
         readBytes += remaining;
         parent.reportRead(remaining);
         if (httpContent instanceof LastHttpContent) {
@@ -171,6 +159,10 @@ public class DownloadSubTask extends HttpTask implements Retryable {
     @Override
     public Http getHttp() {
         return parent.getHttp();
+    }
+
+    public void setTargetFileChannel(SeekableByteChannel targetFileChannel) {
+        this.targetFileChannel = targetFileChannel;
     }
 
     @Override

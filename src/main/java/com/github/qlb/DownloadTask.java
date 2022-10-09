@@ -32,6 +32,8 @@ public class DownloadTask extends HttpTask implements SnapshottingTask {
     private long totalSize = NO_SIZE;
     private ScheduledFuture<?> progress;
 
+    private SeekableByteChannel tmpFile;
+
     public DownloadTask(CommandLine cli) {
         this(cli.getOptionValue(DownloadOptions.URL),
                 cli.getOptionValue(DownloadOptions.HOME_DIR, DEFAULT_DIR) + File.separator + "jget" + File.separator + "download");
@@ -83,23 +85,29 @@ public class DownloadTask extends HttpTask implements SnapshottingTask {
     }
 
     private void mergeTempFiles() {
-        try (SeekableByteChannel target = Files.newByteChannel(new File(targetFileDirectory(), targetFileName()).toPath(),
-                StandardOpenOption.WRITE, StandardOpenOption.CREATE)){
-            for (DownloadSubTask subTask : subTasks) {
-                File tempFile = new File(targetFileDirectory(), subTask.targetFileName());
-                byte[] buffer = new byte[TEMP_FILE_READ_BATCH_SIZE];
-                try (InputStream input = Files.newInputStream(tempFile.toPath(), StandardOpenOption.READ)) {
-                    int readBytes;
-                    while ((readBytes = input.read(buffer)) > 0) {
-                        target.write(ByteBuffer.wrap(buffer, 0, readBytes));
-                    }
-                }
-                Files.delete(tempFile.toPath());
-            }
-            LOG.info("finish merge temp files");
+        try {
+            tmpFile.close();
+            Files.move(new File(targetFileDirectory(), id).toPath(), new File(targetFileDirectory(), targetFileName()).toPath());
         } catch (IOException e) {
-            LOG.error("Error merge temp files", e);
+            throw new RuntimeException(e);
         }
+//        try (SeekableByteChannel target = Files.newByteChannel(new File(targetFileDirectory(), targetFileName()).toPath(),
+//                StandardOpenOption.WRITE, StandardOpenOption.CREATE)){
+//            for (DownloadSubTask subTask : subTasks) {
+//                File tempFile = new File(targetFileDirectory(), subTask.targetFileName());
+//                byte[] buffer = new byte[TEMP_FILE_READ_BATCH_SIZE];
+//                try (InputStream input = Files.newInputStream(tempFile.toPath(), StandardOpenOption.READ)) {
+//                    int readBytes;
+//                    while ((readBytes = input.read(buffer)) > 0) {
+//                        target.write(ByteBuffer.wrap(buffer, 0, readBytes));
+//                    }
+//                }
+//                Files.delete(tempFile.toPath());
+//            }
+//            LOG.info("finish merge temp files");
+//        } catch (IOException e) {
+//            LOG.error("Error merge temp files", e);
+//        }
     }
 
     void addSubTask(DownloadSubTask subTask) {
@@ -130,6 +138,7 @@ public class DownloadTask extends HttpTask implements SnapshottingTask {
         }
         for (DownloadSubTask subTask : subTasks) {
             if (!subTask.isFinished()) {
+                subTask.setTargetFileChannel(tmpFile);
                 subTask.start();
             }
         }
@@ -162,13 +171,36 @@ public class DownloadTask extends HttpTask implements SnapshottingTask {
         stop();
         TIMER_EXECUTOR.shutdown();
         disconnect();
+        if (tmpFile != null && tmpFile.isOpen()) {
+            try {
+                tmpFile.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
         state = State.failed;
     }
 
     @Override
     public void ready() {
-        state = State.ready;
-        startSubTasks();
+        try {
+            tmpFile = createTempFile();
+            state = State.ready;
+            startSubTasks();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private SeekableByteChannel createTempFile() throws IOException {
+        File dir = new File(targetFileDirectory());
+        if (!dir.exists()) {
+            Files.createDirectories(dir.toPath());
+        }
+        return Files.newByteChannel(new File(dir, id).toPath(),
+                        StandardOpenOption.READ,
+                        StandardOpenOption.WRITE,
+                        StandardOpenOption.CREATE);
     }
 
     @Override

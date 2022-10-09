@@ -139,4 +139,17 @@ public enum TaskManager {
         }
     }
 
+    public void clearTasks() {
+        try {
+            loadTasks();
+            for (Map.Entry<String, SnapshottingTask> taskEntry : currentTasks.entrySet()) {
+                Snapshots.remove(taskEntry.getKey());
+            }
+            currentTasks.clear();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+
+
+    }
 }

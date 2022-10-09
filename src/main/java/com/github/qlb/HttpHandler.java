@@ -65,7 +65,7 @@ public class HttpHandler extends SimpleChannelInboundHandler<HttpObject> {
 
     private void handleContent(ChannelHandlerContext ctx, HttpContent content) throws IOException {
         if (error != null) {
-            LOG.warn("ignore content because there is error occurred, task {}", task);
+            LOG.warn("ignore content because there is error occurred, task {}", task, error);
             return;
         }
         if (task instanceof DownloadSubTask) {

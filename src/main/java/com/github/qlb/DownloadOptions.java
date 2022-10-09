@@ -50,6 +50,11 @@ public class DownloadOptions {
             .optionalArg(true)
             .argName("index of listed tasks")
             .build();
+    public static final Option DELETE_ALL = Option.builder()
+            .option("D")
+            .desc("delete all tasks")
+            .hasArg(false)
+            .build();
 
 
     public static Options getDefaultOptions() {
@@ -61,6 +66,7 @@ public class DownloadOptions {
                 .addOption(RESUME)
                 .addOption(RESUME_ALL)
                 .addOption(DELETE)
+                .addOption(DELETE_ALL)
                 ;
     }
 }

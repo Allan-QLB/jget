@@ -37,8 +37,9 @@ public class Launcher {
                     index = selectUnfinishedTask();
                 }
                 TaskManager.INSTANCE.remove(index);
-            }
-            else if (cli.hasOption(DownloadOptions.URL)) {
+            } else if (cli.hasOption(DownloadOptions.DELETE_ALL)) {
+                TaskManager.INSTANCE.clearTasks();
+            } else if (cli.hasOption(DownloadOptions.URL)) {
                 new DownloadTask(cli).start();
             } else {
                 throw new ParseException("Missing argument url");
