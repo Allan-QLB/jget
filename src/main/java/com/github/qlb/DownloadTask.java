@@ -21,7 +21,6 @@ import java.util.concurrent.TimeUnit;
 public class DownloadTask extends HttpTask implements SnapshottingTask {
     private static final Logger LOG = LoggerFactory.getLogger(DownloadTask.class);
     private static final int TEMP_FILE_READ_BATCH_SIZE = 8192;
-    private static final long NO_SIZE = 0;
     private static final String DEFAULT_DIR = Optional.ofNullable(System.getenv("HOME"))
             .orElse(System.getenv("HOMEPATH"));
     private final String id;
@@ -29,7 +28,7 @@ public class DownloadTask extends HttpTask implements SnapshottingTask {
     private final Http http;
     private final String targetDirectory;
     private final List<DownloadSubTask> subTasks = new ArrayList<>();
-    private long totalSize = NO_SIZE;
+    private long totalSize = UNKNOWN_TOTAL_SIZE;
     private ScheduledFuture<?> progress;
 
     private SeekableByteChannel tmpFile;
@@ -67,13 +66,7 @@ public class DownloadTask extends HttpTask implements SnapshottingTask {
         finished
     }
 
-    enum Unit {
-        B(1), KB(1 << 10), MB(1 << 20), GB(1 << 30);
-        private final int factor;
-        Unit(final int factor) {
-            this.factor = factor;
-        }
-    }
+
 
     public void subTaskFinished() {
         for (DownloadSubTask subTask : subTasks) {
@@ -91,23 +84,6 @@ public class DownloadTask extends HttpTask implements SnapshottingTask {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-//        try (SeekableByteChannel target = Files.newByteChannel(new File(targetFileDirectory(), targetFileName()).toPath(),
-//                StandardOpenOption.WRITE, StandardOpenOption.CREATE)){
-//            for (DownloadSubTask subTask : subTasks) {
-//                File tempFile = new File(targetFileDirectory(), subTask.targetFileName());
-//                byte[] buffer = new byte[TEMP_FILE_READ_BATCH_SIZE];
-//                try (InputStream input = Files.newInputStream(tempFile.toPath(), StandardOpenOption.READ)) {
-//                    int readBytes;
-//                    while ((readBytes = input.read(buffer)) > 0) {
-//                        target.write(ByteBuffer.wrap(buffer, 0, readBytes));
-//                    }
-//                }
-//                Files.delete(tempFile.toPath());
-//            }
-//            LOG.info("finish merge temp files");
-//        } catch (IOException e) {
-//            LOG.error("Error merge temp files", e);
-//        }
     }
 
     void addSubTask(DownloadSubTask subTask) {
@@ -144,7 +120,7 @@ public class DownloadTask extends HttpTask implements SnapshottingTask {
         }
         state = State.started;
         LOG.info("Start task {}", this);
-        progress = registerTimer(this::printProgress, 1, 1, TimeUnit.SECONDS);
+        //progress = registerTimer(this::printProgress, 1, 1, TimeUnit.SECONDS);
         TaskManager.INSTANCE.addTask(this);
         disconnect();
     }
@@ -162,14 +138,12 @@ public class DownloadTask extends HttpTask implements SnapshottingTask {
         mergeTempFiles();
         state = State.finished;
         TaskManager.INSTANCE.remove(id);
-        TIMER_EXECUTOR.shutdown();
     }
 
     @Override
     public void failed() {
         LOG.error("task {} failed", this);
         stop();
-        TIMER_EXECUTOR.shutdown();
         disconnect();
         if (tmpFile != null && tmpFile.isOpen()) {
             try {
@@ -178,6 +152,7 @@ public class DownloadTask extends HttpTask implements SnapshottingTask {
                 e.printStackTrace();
             }
         }
+        TaskManager.INSTANCE.removeActive(id);
         state = State.failed;
     }
 
@@ -226,17 +201,18 @@ public class DownloadTask extends HttpTask implements SnapshottingTask {
 
     @Override
     public int finishedPercent() {
-        if (totalSize == NO_SIZE) {
+        if (totalSize == UNKNOWN_TOTAL_SIZE) {
             return UNKNOWN_PERCENT;
         }
-        return (int) (totalRead() * 100/ totalSize);
+        return (int) (getReadBytes() * 100/ totalSize);
     }
 
     public synchronized void reportRead(long readBytes) {
         //totalRead += readBytes;
     }
 
-    private long totalRead() {
+    @Override
+    public long getReadBytes() {
         long totalRead = 0L;
         for (DownloadSubTask subTask : subTasks) {
             totalRead += subTask.getReadBytes();
@@ -244,27 +220,11 @@ public class DownloadTask extends HttpTask implements SnapshottingTask {
         return totalRead;
     }
 
-    private void printProgress() {
-        Unit[] values = Unit.values();
-        double readUnited = 0D;
-        Unit unit = Unit.B;
-        final long totalRead = totalRead();
-        for (int i = values.length - 1; i >= 0; i--) {
-            readUnited = totalRead * 1.0 / values[i].factor;
-            if (readUnited >= 0.5) {
-                unit = values[i];
-                break;
-            }
-        }
-        if (totalSize != NO_SIZE) {
-            System.out.printf("\r%d%%, transferred: %.2f%s%n", totalRead * 100 / totalSize, readUnited, unit);
-        } else {
-            System.out.printf("transferred: %.2f%s%n", readUnited, unit);
-        }
-        if (isFinished()) {
-            progress.cancel(false);
-        }
+    @Override
+    public long getTotalBytes() {
+        return totalSize;
     }
+
 
     @Override
     public TaskSnapshot snapshot() {

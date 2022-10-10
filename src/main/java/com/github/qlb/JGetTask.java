@@ -2,14 +2,11 @@ package com.github.qlb;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
+
 
 public interface JGetTask {
     int UNKNOWN_PERCENT = -1;
-    ScheduledExecutorService TIMER_EXECUTOR = Executors.newSingleThreadScheduledExecutor();
+    long UNKNOWN_TOTAL_SIZE = 0;
     default String id() {
        return UUID.randomUUID().toString();
     }
@@ -18,6 +15,15 @@ public interface JGetTask {
     default int finishedPercent() {
         return UNKNOWN_PERCENT;
     }
+
+    default long getReadBytes() {
+        return 0;
+    }
+
+    default long getTotalBytes() {
+        return UNKNOWN_TOTAL_SIZE;
+    }
+
     void start();
     void ready();
 
@@ -26,8 +32,6 @@ public interface JGetTask {
     void failed();
     void stop();
     LocalDateTime createTime();
-    default ScheduledFuture<?> registerTimer(Runnable task, long delay, long period, TimeUnit unit) {
-        return TIMER_EXECUTOR.scheduleAtFixedRate(task, delay, period, unit);
-    }
+
 
 }

@@ -13,8 +13,10 @@ public enum TaskManager {
     INSTANCE;
     private static final Logger LOG = LoggerFactory.getLogger(TaskManager.class);
     private final Map<String, SnapshottingTask> currentTasks = new ConcurrentHashMap<>();
+    private final Map<String, JGetTask> activeTasks = new ConcurrentHashMap<>();
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
     private volatile ScheduledFuture<?> periodicalSnapshotting;
+    private volatile ScheduledFuture<?> periodicalShowProgress;
 
 
     public void addTask(@Nonnull JGetTask task) {
@@ -30,12 +32,9 @@ public enum TaskManager {
                 throw new RuntimeException(e);
             }
         }
-    }
-
-    public void snapShotTasks() throws IOException {
-        for (Snapshotting currentTask : currentTasks.values()) {
-            Snapshot snapshot = currentTask.snapshot();
-            Snapshots.persist(snapshot);
+        activeTasks.put(task.id(), task);
+        if (periodicalShowProgress == null) {
+            periodicalShowProgress =  scheduler.scheduleAtFixedRate(this::showActiveTaskProgress, 1, 1, TimeUnit.SECONDS);
         }
     }
 
@@ -117,13 +116,22 @@ public enum TaskManager {
         }
 
     }
+
     public void remove(String id) {
         try {
             currentTasks.remove(id);
             Snapshots.remove(id);
+            removeActive(id);
             System.out.println("remove task " + id);
         } catch (IOException e) {
             LOG.error("Error remove task {} ", id, e);
+        }
+    }
+
+    public void removeActive(String id) {
+        activeTasks.remove(id);
+        if (activeTasks.isEmpty()) {
+            scheduler.shutdown();
         }
     }
 
@@ -131,12 +139,43 @@ public enum TaskManager {
         for (Map.Entry<String, SnapshottingTask> taskEntry : currentTasks.entrySet()) {
             try {
                 LOG.debug("Persist task {} Periodically", taskEntry.getValue());
-                //System.out.println("persist task " + taskEntry.getValue().id() +  " periodically");
                 Snapshots.persist(taskEntry.getValue().snapshot());
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
         }
+    }
+
+    private void showActiveTaskProgress() {
+        StringBuilder progress = new StringBuilder();
+        for (Map.Entry<String, JGetTask> taskEntry : activeTasks.entrySet()) {
+            final JGetTask task = taskEntry.getValue();
+            progress.append(String.format("[%s][%s][%s%%][%s/%s][%s]%n",
+                    task.id(),
+                    task.targetFileName(),
+                    task.finishedPercent() == JGetTask.UNKNOWN_PERCENT ? "-" : String.valueOf(task.finishedPercent()),
+                    unitedSize(task.getReadBytes()),
+                    unitedSize(task.getTotalBytes()),
+                    task.createTime()));
+        }
+        System.out.print(progress);
+    }
+
+    private String unitedSize(long size) {
+        if (size <= 0) {
+            return "-";
+        }
+        Unit[] values = Unit.values();
+        double united = 0D;
+        Unit unit = Unit.B;
+        for (int i = values.length - 1; i >= 0; i--) {
+            united = size * 1.0 / values[i].getFactor();
+            if (united >= 0.5) {
+                unit = values[i];
+                break;
+            }
+        }
+        return String.format("%.2f%s", united, unit);
     }
 
     public void clearTasks() {
@@ -151,5 +190,18 @@ public enum TaskManager {
         }
 
 
+    }
+}
+
+
+enum Unit {
+    B(1), KB(1 << 10), MB(1 << 20), GB(1 << 30);
+    private final int factor;
+    Unit(final int factor) {
+        this.factor = factor;
+    }
+
+    public int getFactor() {
+        return factor;
     }
 }

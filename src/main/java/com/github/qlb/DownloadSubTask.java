@@ -1,16 +1,14 @@
 package com.github.qlb;
+
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.HttpContent;
 import io.netty.handler.codec.http.LastHttpContent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SeekableByteChannel;
-import java.nio.file.Files;
-import java.nio.file.StandardOpenOption;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -26,16 +24,15 @@ public class DownloadSubTask extends HttpTask implements Retryable {
     private long readBytes;
     private int retry;
 
-    public DownloadSubTask(DownloadTask parent, int index, Range range) throws IOException {
+    public DownloadSubTask(DownloadTask parent, int index, Range range) {
         this.parent = parent;
         this.index = index;
         this.range = range;
         this.finished = false;
         this.client = new Client(this);
-        //this.targetFileChannel = createTempFile(readBytes);
     }
 
-    public DownloadSubTask(DownloadTask parent, int index, Range range, long readBytes) throws IOException {
+    public DownloadSubTask(DownloadTask parent, int index, Range range, long readBytes) {
         this.parent = parent;
         this.index = index;
         this.range = range;
@@ -45,7 +42,6 @@ public class DownloadSubTask extends HttpTask implements Retryable {
             this.finished = false;
         }
         this.client = new Client(this);
-        //this.targetFileChannel = createTempFile(readBytes);
         this.readBytes = readBytes;
     }
 
@@ -67,15 +63,10 @@ public class DownloadSubTask extends HttpTask implements Retryable {
     }
 
     private void reset() throws IOException {
-//        if (targetFileChannel != null && targetFileChannel.isOpen()) {
-//            targetFileChannel.close();
-//        }
-//        targetFileChannel = createTempFile(0);
         readBytes = 0;
     }
 
     public void finished() {
-
         client.shutdown();
         this.finished = true;
         parent.subTaskFinished();
@@ -119,6 +110,7 @@ public class DownloadSubTask extends HttpTask implements Retryable {
         parent.addSubTask(this);
     }
 
+    @Override
     public long getReadBytes() {
         return readBytes;
     }
