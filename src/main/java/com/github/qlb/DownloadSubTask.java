@@ -36,11 +36,7 @@ public class DownloadSubTask extends HttpTask implements Retryable {
         this.parent = parent;
         this.index = index;
         this.range = range;
-        if (range.size() > 0 && readBytes >= range.size()) {
-            this.finished = true;
-        } else {
-            this.finished = false;
-        }
+        this.finished = range.size() > 0 && readBytes >= range.size();
         this.client = new Client(this);
         this.readBytes = readBytes;
     }

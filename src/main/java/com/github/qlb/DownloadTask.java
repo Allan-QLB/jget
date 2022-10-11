@@ -6,8 +6,6 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStream;
-import java.nio.ByteBuffer;
 import java.nio.channels.SeekableByteChannel;
 import java.nio.file.Files;
 import java.nio.file.StandardOpenOption;
@@ -16,11 +14,9 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
 
 public class DownloadTask extends HttpTask implements SnapshottingTask {
     private static final Logger LOG = LoggerFactory.getLogger(DownloadTask.class);
-    private static final int TEMP_FILE_READ_BATCH_SIZE = 8192;
     private static final String DEFAULT_DIR = Optional.ofNullable(System.getenv("HOME"))
             .orElse(System.getenv("HOMEPATH"));
     private final String id;
@@ -120,7 +116,6 @@ public class DownloadTask extends HttpTask implements SnapshottingTask {
         }
         state = State.started;
         LOG.info("Start task {}", this);
-        //progress = registerTimer(this::printProgress, 1, 1, TimeUnit.SECONDS);
         TaskManager.INSTANCE.addTask(this);
         disconnect();
     }
