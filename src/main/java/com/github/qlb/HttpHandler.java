@@ -59,7 +59,7 @@ public class HttpHandler extends SimpleChannelInboundHandler<HttpObject> {
             LOG.info("redirect to {}, task {}", location, task);
             new DownloadTask(location, task.targetFileDirectory()).start();
         } else {
-            throw new IllegalStateException("unexpected response");
+            throw new IllegalStateException("unexpected response " + response.status());
         }
     }
 

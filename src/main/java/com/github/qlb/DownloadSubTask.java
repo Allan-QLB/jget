@@ -48,18 +48,8 @@ public class DownloadSubTask extends HttpTask implements Retryable {
     }
 
     public void restart() {
-        try {
-            LOG.info("restart subtask {}", this);
-            reset();
-            start();
-        } catch (IOException e) {
-            e.printStackTrace();
-            failed();
-        }
-    }
-
-    private void reset() throws IOException {
-        readBytes = 0;
+        LOG.info("restart subtask {}", this);
+        start();
     }
 
     public void finished() {
