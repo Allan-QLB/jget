@@ -18,6 +18,14 @@ public enum TaskManager {
     private volatile ScheduledFuture<?> periodicalSnapshotting;
     private volatile ScheduledFuture<?> periodicalShowProgress;
 
+    {
+        try {
+            loadTasks();
+        } catch (IOException e) {
+           throw new RuntimeException(e);
+        }
+    }
+
 
     public void addTask(@Nonnull JGetTask task) {
         if (task instanceof SnapshottingTask) {
@@ -34,7 +42,7 @@ public enum TaskManager {
         }
         activeTasks.put(task.id(), task);
         if (periodicalShowProgress == null) {
-            periodicalShowProgress =  scheduler.scheduleAtFixedRate(this::showActiveTaskProgress, 1, 1, TimeUnit.SECONDS);
+            periodicalShowProgress = scheduler.scheduleAtFixedRate(this::showActiveTaskProgress, 1, 1, TimeUnit.SECONDS);
         }
     }
 
@@ -50,71 +58,50 @@ public enum TaskManager {
     }
 
     public void printTasks() {
-        try {
-            loadTasks();
-            List<SnapshottingTask> sortedTasks = currentTasks.values().stream()
-                    .sorted(Comparator.comparing(JGetTask::createTime).reversed()).collect(Collectors.toList());
-            for (int i = 0; i < sortedTasks.size(); i++) {
-                SnapshottingTask task = sortedTasks.get(i);
-                String summary = String.format("[%d]-[%s][%s][%s%%][%s]",
-                        i+1,
-                        task.id(),
-                        task.targetFileName(),
-                        task.finishedPercent() == JGetTask.UNKNOWN_PERCENT ? "-" : String.valueOf(task.finishedPercent()),
-                        task.createTime()
-                        );
-                System.out.println(summary);
-            }
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+        List<SnapshottingTask> sortedTasks = currentTasks.values().stream()
+                .sorted(Comparator.comparing(JGetTask::createTime).reversed()).collect(Collectors.toList());
+        for (int i = 0; i < sortedTasks.size(); i++) {
+            SnapshottingTask task = sortedTasks.get(i);
+            String summary = String.format("[%d]-[%s][%s][%s%%][%s]",
+                    i + 1,
+                    task.id(),
+                    task.targetFileName(),
+                    task.finishedPercent() == JGetTask.UNKNOWN_PERCENT ? "-" : String.valueOf(task.finishedPercent()),
+                    task.createTime()
+            );
+            System.out.println(summary);
         }
+
     }
 
     public void resumeTask(int index) {
-        try {
-            loadTasks();
-            List<SnapshottingTask> sortedTasks = currentTasks.values().stream()
-                    .sorted(Comparator.comparing(JGetTask::createTime).reversed()).collect(Collectors.toList());
-            if (index <= 0 || index > sortedTasks.size()) {
-                throw new IllegalArgumentException("index should > 0 and <= " + sortedTasks.size());
-            }
-            for (int i = 0; i < currentTasks.size(); i++) {
-                if (i + 1 == index) {
-                    sortedTasks.get(i).ready();
-                }
-            }
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+        List<SnapshottingTask> sortedTasks = currentTasks.values().stream()
+                .sorted(Comparator.comparing(JGetTask::createTime).reversed()).collect(Collectors.toList());
+        if (index <= 0 || index > sortedTasks.size()) {
+            throw new IllegalArgumentException("index should > 0 and <= " + sortedTasks.size());
         }
-
+        for (int i = 0; i < currentTasks.size(); i++) {
+            if (i + 1 == index) {
+                sortedTasks.get(i).ready();
+            }
+        }
     }
 
     public void resumeTasks() {
-        try {
-            loadTasks();
-            Iterator<Map.Entry<String, SnapshottingTask>> iterator = currentTasks.entrySet().iterator();
-            while (iterator.hasNext()) {
-                Map.Entry<String, SnapshottingTask> entry = iterator.next();
-                entry.getValue().ready();
-            }
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+        Iterator<Map.Entry<String, SnapshottingTask>> iterator = currentTasks.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<String, SnapshottingTask> entry = iterator.next();
+            entry.getValue().ready();
         }
     }
 
     public void remove(int index) {
-        try {
-            loadTasks();
-            List<SnapshottingTask> sortedTasks = currentTasks.values().stream()
-                    .sorted(Comparator.comparing(JGetTask::createTime).reversed()).collect(Collectors.toList());
-            if (index <= 0 || index > sortedTasks.size()) {
-                throw new IllegalArgumentException("index should > 0 and <= " + sortedTasks.size());
-            }
-            remove(sortedTasks.get(index - 1).id());
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+        List<SnapshottingTask> sortedTasks = currentTasks.values().stream()
+                .sorted(Comparator.comparing(JGetTask::createTime).reversed()).collect(Collectors.toList());
+        if (index <= 0 || index > sortedTasks.size()) {
+            throw new IllegalArgumentException("index should > 0 and <= " + sortedTasks.size());
         }
-
+        remove(sortedTasks.get(index - 1).id());
     }
 
     public void remove(String id) {
@@ -161,7 +148,7 @@ public enum TaskManager {
         System.out.print(progress);
     }
 
-    private String unitedSize(long size) {
+    private static String unitedSize(long size) {
         if (size <= 0) {
             return "-";
         }
@@ -180,7 +167,6 @@ public enum TaskManager {
 
     public void clearTasks() {
         try {
-            loadTasks();
             for (Map.Entry<String, SnapshottingTask> taskEntry : currentTasks.entrySet()) {
                 Snapshots.remove(taskEntry.getKey());
             }
@@ -197,6 +183,7 @@ public enum TaskManager {
 enum Unit {
     B(1), KB(1 << 10), MB(1 << 20), GB(1 << 30);
     private final int factor;
+
     Unit(final int factor) {
         this.factor = factor;
     }
