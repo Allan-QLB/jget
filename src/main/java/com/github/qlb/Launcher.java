@@ -18,23 +18,27 @@ public class Launcher {
             } else if (cli.hasOption(DownloadOptions.RESUME_ALL)) {
                 TaskManager.INSTANCE.resumeTasks();
             } else if (cli.hasOption(DownloadOptions.RESUME)) {
-                String resumeTargetIndexString = cli.getOptionValue(DownloadOptions.RESUME);
-                int index;
-                try {
-                    index = Integer.parseInt(resumeTargetIndexString);
-                } catch (Exception e) {
-                    index = selectUnfinishedTask();
+                if (TaskManager.INSTANCE.hasUnfinishedTask()) {
+                    String resumeTargetIndexString = cli.getOptionValue(DownloadOptions.RESUME);
+                    int index;
+                    try {
+                        index = Integer.parseInt(resumeTargetIndexString);
+                    } catch (Exception e) {
+                        index = selectUnfinishedTask();
+                    }
+                    TaskManager.INSTANCE.resumeTask(index);
                 }
-                TaskManager.INSTANCE.resumeTask(index);
             } else if (cli.hasOption(DownloadOptions.DELETE)) {
-                String resumeTargetIndexString = cli.getOptionValue(DownloadOptions.RESUME);
-                int index;
-                try {
-                    index = Integer.parseInt(resumeTargetIndexString);
-                } catch (Exception e) {
-                    index = selectUnfinishedTask();
+                if (TaskManager.INSTANCE.hasUnfinishedTask()) {
+                    String resumeTargetIndexString = cli.getOptionValue(DownloadOptions.RESUME);
+                    int index;
+                    try {
+                        index = Integer.parseInt(resumeTargetIndexString);
+                    } catch (Exception e) {
+                        index = selectUnfinishedTask();
+                    }
+                    TaskManager.INSTANCE.remove(index);
                 }
-                TaskManager.INSTANCE.remove(index);
             } else if (cli.hasOption(DownloadOptions.DELETE_ALL)) {
                 TaskManager.INSTANCE.clearTasks();
             } else if (cli.hasOption(DownloadOptions.URL)) {

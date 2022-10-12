@@ -165,6 +165,10 @@ public enum TaskManager {
         return String.format("%.2f%s", united, unit);
     }
 
+    public boolean hasUnfinishedTask() {
+        return !currentTasks.isEmpty();
+    }
+
     public void clearTasks() {
         try {
             for (Map.Entry<String, SnapshottingTask> taskEntry : currentTasks.entrySet()) {
@@ -174,8 +178,6 @@ public enum TaskManager {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-
-
     }
 }
 
