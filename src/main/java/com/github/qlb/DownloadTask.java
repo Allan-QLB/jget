@@ -13,7 +13,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.ScheduledFuture;
 
 public class DownloadTask extends HttpTask implements SnapshottingTask {
     private static final Logger LOG = LoggerFactory.getLogger(DownloadTask.class);
@@ -25,8 +24,6 @@ public class DownloadTask extends HttpTask implements SnapshottingTask {
     private final String targetDirectory;
     private final List<DownloadSubTask> subTasks = new ArrayList<>();
     private long totalSize = UNKNOWN_TOTAL_SIZE;
-    private ScheduledFuture<?> progress;
-
     private SeekableByteChannel tmpFile;
 
     public DownloadTask(CommandLine cli) {
@@ -61,8 +58,6 @@ public class DownloadTask extends HttpTask implements SnapshottingTask {
         failed,
         finished
     }
-
-
 
     public void subTaskFinished() {
         for (DownloadSubTask subTask : subTasks) {
@@ -219,7 +214,6 @@ public class DownloadTask extends HttpTask implements SnapshottingTask {
     public long getTotalBytes() {
         return totalSize;
     }
-
 
     @Override
     public TaskSnapshot snapshot() {

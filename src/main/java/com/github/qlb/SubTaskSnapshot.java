@@ -1,6 +1,5 @@
 package com.github.qlb;
 
-import java.io.IOException;
 
 public class SubTaskSnapshot {
     private final int index;
@@ -13,7 +12,7 @@ public class SubTaskSnapshot {
         this.finishedSize = finishedSize;
     }
 
-    public DownloadSubTask recover(DownloadTask parent) throws IOException {
+    public DownloadSubTask recover(DownloadTask parent) {
         return new DownloadSubTask(parent, index, range, finishedSize);
     }
 

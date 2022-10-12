@@ -30,7 +30,7 @@ public class HttpHandler extends SimpleChannelInboundHandler<HttpObject> {
             }
     }
 
-    private void handleResponse(ChannelHandlerContext ctx, HttpResponse response) throws IOException {
+    private void handleResponse(ChannelHandlerContext ctx, HttpResponse response) {
         LOG.info("{} receive response {}", task, response.status());
         final HttpHeaders headers = response.headers();
         if (response.status() == HttpResponseStatus.OK) {
@@ -73,7 +73,7 @@ public class HttpHandler extends SimpleChannelInboundHandler<HttpObject> {
         }
     }
 
-    private void allocateSubTasks(DownloadTask task, long totalLen, int numSubTasks) throws IOException {
+    private void allocateSubTasks(DownloadTask task, long totalLen, int numSubTasks) {
         long size = totalLen / numSubTasks;
         for (int i = 0; i < numSubTasks; i++) {
             if (i != numSubTasks - 1) {
@@ -90,7 +90,7 @@ public class HttpHandler extends SimpleChannelInboundHandler<HttpObject> {
         if (task instanceof DownloadSubTask) {
             request.setMethod(HttpMethod.GET);
             final Range range = ((DownloadSubTask) task).getRange();
-            long readBytes = ((DownloadSubTask) task).getReadBytes();
+            long readBytes = task.getReadBytes();
             if (task.isFinished()) {
                 return;
             } else if (range.size() > 0 && readBytes < range.size()) {
