@@ -101,17 +101,19 @@ public enum TaskManager {
         if (index <= 0 || index > sortedTasks.size()) {
             throw new IllegalArgumentException("index should > 0 and <= " + sortedTasks.size());
         }
-        remove(sortedTasks.get(index - 1).id());
+        remove(sortedTasks.get(index - 1));
     }
 
-    public void remove(String id) {
+    public void remove(JGetTask task) {
+        final String taskId = task.id();
         try {
-            currentTasks.remove(id);
-            Snapshots.remove(id);
-            removeActive(id);
-            System.out.println("remove task " + id);
+            currentTasks.remove(taskId);
+            Snapshots.remove(taskId);
+            removeActive(taskId);
+            task.deleted();
+            System.out.println("remove task " + taskId);
         } catch (IOException e) {
-            LOG.error("Error remove task {} ", id, e);
+            LOG.error("Error remove task {} ", taskId, e);
         }
     }
 

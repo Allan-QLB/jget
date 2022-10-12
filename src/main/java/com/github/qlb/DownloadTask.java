@@ -8,6 +8,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.channels.SeekableByteChannel;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
@@ -68,10 +69,10 @@ public class DownloadTask extends HttpTask implements SnapshottingTask {
         finished();
     }
 
-    private void mergeTempFiles() {
+    private void renameTempFiles() {
         try {
             tmpFile.close();
-            Files.move(new File(targetFileDirectory(), id).toPath(), new File(targetFileDirectory(), targetFileName()).toPath());
+            Files.move(tmpFilePath(), new File(targetFileDirectory(), targetFileName()).toPath());
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -125,9 +126,9 @@ public class DownloadTask extends HttpTask implements SnapshottingTask {
 
     @Override
     public void finished() {
-        mergeTempFiles();
+        renameTempFiles();
         state = State.finished;
-        TaskManager.INSTANCE.remove(id);
+        TaskManager.INSTANCE.remove(this);
     }
 
     @Override
@@ -154,6 +155,15 @@ public class DownloadTask extends HttpTask implements SnapshottingTask {
             startSubTasks();
         } catch (IOException e) {
             throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public void deleted() {
+        try {
+            Files.delete(tmpFilePath());
+        } catch (IOException e) {
+            e.printStackTrace();
         }
     }
 
@@ -201,6 +211,7 @@ public class DownloadTask extends HttpTask implements SnapshottingTask {
         //totalRead += readBytes;
     }
 
+
     @Override
     public long getReadBytes() {
         long totalRead = 0L;
@@ -223,6 +234,10 @@ public class DownloadTask extends HttpTask implements SnapshottingTask {
             taskSnapshot.getSubtasks().add(subTask.snapshot());
         }
         return taskSnapshot;
+    }
+
+    private Path tmpFilePath() {
+        return new File(targetFileDirectory(), id).toPath();
     }
 
     @Override

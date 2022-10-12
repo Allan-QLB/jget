@@ -24,6 +24,10 @@ public interface JGetTask {
         return UNKNOWN_TOTAL_SIZE;
     }
 
+    default void deleted() {
+
+    }
+
     void start();
     void ready();
 

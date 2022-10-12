@@ -29,7 +29,7 @@ public class TaskSnapshot implements Snapshot {
     }
 
     @Override
-    public DownloadTask recover() throws IOException {
+    public DownloadTask recover() {
         DownloadTask task = new DownloadTask(taskId, url, fileDirectory);
         for (SubTaskSnapshot subtask : subtasks) {
             task.addSubTask(subtask.recover(task));
