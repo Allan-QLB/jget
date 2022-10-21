@@ -1,7 +1,7 @@
 package com.github.qlb;
 
 
-import java.io.IOException;
+import java.time.LocalDateTime;
 import java.util.*;
 
 
@@ -12,14 +12,21 @@ public class TaskSnapshot implements Snapshot {
     private final long totalSize;
     private final String fileDirectory;
     private final String fileName;
+    private LocalDateTime createTime;
     private final List<SubTaskSnapshot> subtasks = new ArrayList<>();
 
-    public TaskSnapshot(String taskId, String url, long totalSize, String fileDirectory, String fileName) {
+    public TaskSnapshot(String taskId,
+                        String url,
+                        long totalSize,
+                        String fileDirectory,
+                        String fileName,
+                        LocalDateTime createTime) {
         this.taskId = taskId;
         this.url = url;
         this.totalSize = totalSize;
         this.fileDirectory = fileDirectory;
         this.fileName = fileName;
+        this.createTime = createTime;
     }
 
 
@@ -30,11 +37,7 @@ public class TaskSnapshot implements Snapshot {
 
     @Override
     public DownloadTask recover() {
-        DownloadTask task = new DownloadTask(taskId, url, fileDirectory);
-        for (SubTaskSnapshot subtask : subtasks) {
-            task.addSubTask(subtask.recover(task));
-        }
-        return task;
+        return DownloadTask.recoverFromSnapshot(this);
     }
 
     public String getTaskId() {
@@ -59,6 +62,14 @@ public class TaskSnapshot implements Snapshot {
 
     public List<SubTaskSnapshot> getSubtasks() {
         return subtasks;
+    }
+
+    public LocalDateTime getCreateTime() {
+        return createTime;
+    }
+
+    public void setCreateTime(LocalDateTime createTime) {
+        this.createTime = createTime;
     }
 
     @Override

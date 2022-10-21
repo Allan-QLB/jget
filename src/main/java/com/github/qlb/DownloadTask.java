@@ -4,12 +4,14 @@ import org.apache.commons.cli.CommandLine;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.annotation.Nonnull;
 import java.io.File;
 import java.io.IOException;
 import java.nio.channels.SeekableByteChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -30,7 +32,6 @@ public class DownloadTask extends HttpTask implements SnapshottingTask {
     public DownloadTask(CommandLine cli) {
         this(cli.getOptionValue(DownloadOptions.URL),
                 cli.getOptionValue(DownloadOptions.HOME_DIR, DEFAULT_DIR) + File.separator + "jget" + File.separator + "download");
-
     }
 
     public DownloadTask(String url, String targetDirectory) {
@@ -40,11 +41,20 @@ public class DownloadTask extends HttpTask implements SnapshottingTask {
         this.state = State.created;
     }
 
-    public DownloadTask(String id, String url, String targetDirectory) {
+    private DownloadTask(String id, String url, String targetDirectory, LocalDateTime createTime) {
         this.id = id;
         this.http = new Http(url);
         this.targetDirectory = targetDirectory;
         this.state = State.created;
+        this.createTime = createTime;
+    }
+
+    public static DownloadTask recoverFromSnapshot(@Nonnull TaskSnapshot snapshot) {
+        DownloadTask task = new DownloadTask(snapshot.getTaskId(), snapshot.getUrl(), snapshot.getFileDirectory(), snapshot.getCreateTime());
+        for (SubTaskSnapshot subtask : snapshot.getSubtasks()) {
+            task.addSubTask(subtask.recover(task));
+        }
+        return task;
     }
 
     @Override
@@ -211,7 +221,6 @@ public class DownloadTask extends HttpTask implements SnapshottingTask {
         //totalRead += readBytes;
     }
 
-
     @Override
     public long getReadBytes() {
         long totalRead = 0L;
@@ -229,7 +238,7 @@ public class DownloadTask extends HttpTask implements SnapshottingTask {
     @Override
     public TaskSnapshot snapshot() {
         final TaskSnapshot taskSnapshot = new TaskSnapshot(id, getHttp().getUrl(), totalSize,
-                targetFileDirectory(), http.getFileName());
+                targetFileDirectory(), http.getFileName(), createTime);
         for (DownloadSubTask subTask : subTasks) {
             taskSnapshot.getSubtasks().add(subTask.snapshot());
         }
