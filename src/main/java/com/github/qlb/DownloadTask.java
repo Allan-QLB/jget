@@ -114,16 +114,22 @@ public class DownloadTask extends HttpTask implements SnapshottingTask {
         if (state == State.started || state == State.finished) {
             return;
         }
+        boolean allSubtasksFinished = true;
         for (DownloadSubTask subTask : subTasks) {
             if (!subTask.isFinished()) {
+                allSubtasksFinished = false;
                 subTask.setTargetFileChannel(tmpFile);
                 subTask.start();
             }
         }
-        state = State.started;
-        LOG.info("Start task {}", this);
-        TaskManager.INSTANCE.addTask(this);
         disconnect();
+        if (allSubtasksFinished) {
+            finished();
+        } else {
+            state = State.started;
+            LOG.info("Start task {}", this);
+            TaskManager.INSTANCE.addTask(this);
+        }
     }
 
     public void discarded() {
@@ -171,7 +177,7 @@ public class DownloadTask extends HttpTask implements SnapshottingTask {
     @Override
     public void deleted() {
         try {
-            Files.delete(tmpFilePath());
+            Files.deleteIfExists(tmpFilePath());
         } catch (IOException e) {
             e.printStackTrace();
         }
