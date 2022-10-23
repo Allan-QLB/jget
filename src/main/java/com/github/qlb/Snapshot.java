@@ -4,5 +4,5 @@ import java.io.IOException;
 
 public interface Snapshot {
     String id();
-    JGetTask recover() throws IOException;
+    SnapshottingTask recover() throws IOException;
 }

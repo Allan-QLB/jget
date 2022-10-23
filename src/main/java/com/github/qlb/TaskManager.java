@@ -47,9 +47,9 @@ public enum TaskManager {
     }
 
     public void loadTasks() throws IOException {
-        Map<String, DownloadTask> map = new HashMap<>();
-        for (TaskSnapshot taskSnapshot : Snapshots.loadAllTasks()) {
-            DownloadTask recover = taskSnapshot.recover();
+        Map<String, SnapshottingTask> map = new HashMap<>();
+        for (Snapshot taskSnapshot : Snapshots.loadAllTasks()) {
+            SnapshottingTask recover = taskSnapshot.recover();
             if (map.put(recover.id(), recover) != null) {
                 throw new IllegalStateException("Duplicate key");
             }

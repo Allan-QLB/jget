@@ -1,17 +1,18 @@
 package com.github.qlb;
 
-import com.google.common.reflect.TypeToken;
+import com.google.common.primitives.Bytes;
 import com.google.gson.Gson;
-import io.netty.util.internal.StringUtil;
 import org.iq80.leveldb.DB;
 import org.iq80.leveldb.Options;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
 
 import static org.iq80.leveldb.impl.Iq80DBFactory.*;
-import static org.iq80.leveldb.impl.Iq80DBFactory.bytes;
 
 public class Snapshots {
     private static final String DB_FILE = "jgetdb";
@@ -19,7 +20,10 @@ public class Snapshots {
         Options options = new Options();
         options.createIfMissing(true);
         try (DB db = factory.open(new File(dbFile), options)) {
-            db.put(bytes(snapshot.id()), bytes(new Gson().toJson(snapshot)));
+            String clazzName = snapshot.getClass().getName();
+            String json = new Gson().toJson(snapshot);
+            byte[] value = Bytes.concat(new byte[]{(byte) clazzName.length()}, bytes(clazzName), bytes(json));
+            db.put(bytes(snapshot.id()), value);
         }
     }
 
@@ -27,7 +31,7 @@ public class Snapshots {
         persist(DB_FILE, snapshot);
     }
 
-    public static TaskSnapshot load(String id) throws IOException {
+    public static Snapshot load(String id) throws IOException {
         return load(DB_FILE, id);
     }
 
@@ -39,36 +43,42 @@ public class Snapshots {
         }
     }
 
-    public static List<TaskSnapshot> loadAllTasks() throws IOException {
+    public static List<Snapshot> loadAllTasks() throws IOException {
         return loadAllTasks(DB_FILE);
     }
 
-    public static List<TaskSnapshot> loadAllTasks(String dbFile) throws IOException {
+    public static List<Snapshot> loadAllTasks(String dbFile) throws IOException {
         Options options = new Options();
         options.createIfMissing(true);
-        ArrayList<TaskSnapshot> result = new ArrayList<>();
+        List<Snapshot> result = new ArrayList<>();
         try (DB db = factory.open(new File(dbFile), new Options())) {
             for (Map.Entry<byte[], byte[]> next : db) {
-                String json = asString(next.getValue());
-                if (!StringUtil.isNullOrEmpty(json)) {
-                    result.add(new Gson().fromJson(json, new TypeToken<TaskSnapshot>() {
-                    }.getType()));
+                Snapshot snapshot = deserializeSnapshot(next.getValue());
+                if (snapshot != null) {
+                    result.add(snapshot);
                 }
             }
         }
         return result;
     }
 
-    static TaskSnapshot load(String dbFile, String id) throws IOException {
+    static Snapshot load(String dbFile, String id) throws IOException {
         Options options = new Options();
         options.createIfMissing(true);
         try (DB db = factory.open(new File(dbFile), new Options())) {
-            String json = asString(db.get(bytes(id)));
-            if (json == null) {
-                return null;
-            } else {
-                return new Gson().fromJson(json, new TypeToken<TaskSnapshot>() {}.getType());
-            }
+            return deserializeSnapshot(db.get(bytes(id)));
+        }
+    }
+
+    public static Snapshot deserializeSnapshot(byte[] bytes) {
+        if (bytes == null || bytes.length == 0) return null;
+        int classLen = bytes[0];
+        String className = asString(Arrays.copyOfRange(bytes, 1, classLen + 1));
+        String json = asString(Arrays.copyOfRange(bytes, classLen + 1, bytes.length));
+        try {
+            return (Snapshot) new Gson().fromJson(json, Class.forName(className));
+        } catch (ClassNotFoundException e) {
+            throw new RuntimeException(e);
         }
     }
 

@@ -13,9 +13,9 @@ class TaskSnapshotTest {
     @Test
     void testPersistLoad() throws IOException {
         LocalDateTime now = LocalDateTime.now();
-        TaskSnapshot snapshot = new TaskSnapshot("a", "b", 100L, "world", "hello", now);
+        Snapshot snapshot = new TaskSnapshot("a", "b", 100L, "world", "hello", now);
         Snapshots.persist(TEST_DB, snapshot);
-        TaskSnapshot load = Snapshots.load(TEST_DB, "a");
+        TaskSnapshot load = (TaskSnapshot) Snapshots.load(TEST_DB, "a");
         assertNotNull(load);
         assertEquals("a", load.getTaskId());
         assertEquals("b", load.getUrl());
